@@ -104,7 +104,6 @@ void SetUserRoot();
 static bool m_killed = false;
 static int  m_signal = 0;
 
-
 #if !defined(_WIN32) && !defined(_WIN64)
 static void sigHandler(int signum)
 {
@@ -144,6 +143,9 @@ int main(int argc, char** argv)
 	::signal(SIGHUP,  sigHandler);
 #endif
 
+	int ret = 0;
+
+
 	do {
 		m_signal = 0;
 	
@@ -172,25 +174,6 @@ int main(int argc, char** argv)
 
 CDMRGateway::CDMRGateway(const std::string& confFile) :
 m_conf(confFile),
-	m_xlxVoice(NULL),
-    m_dmr1Voice(NULL),
-    m_dmr2Voice(NULL),
-    m_dmr3Voice(NULL),
-    m_dmr4Voice(NULL),
-    m_dmr5Voice(NULL),
-    m_dmr6Voice(NULL),
-    m_dmr1Slot(0U),
-    m_dmr1TG(0U),
-    m_dmr2Slot(0U),
-    m_dmr2TG(0U),
-    m_dmr3Slot(0U),
-    m_dmr3TG(0U),
-    m_dmr4Slot(0U),
-    m_dmr4TG(0U),
-    m_dmr5Slot(0U),
-    m_dmr5TG(0U),
-    m_dmr6Slot(0U),
-    m_dmr6TG(0U),
 m_status(NULL),
 m_repeater(NULL),
 m_config(NULL),
@@ -227,6 +210,7 @@ m_xlxUserControl(true),
 m_xlxModule(),
 m_rptRewrite(NULL),
 m_xlxRewrite(NULL),
+m_xlxVoice(NULL),
 m_dmr1NetRewrites(),
 m_dmr1RFRewrites(),
 m_dmr1SrcRewrites(),
@@ -268,36 +252,6 @@ m_network4Enabled(false),
 m_network5Enabled(false),
 m_network6Enabled(false),
 m_networkXlxEnabled(false),
-
-
-m_dmrNetwork1Connected(false),
-m_dmrNetwork2Connected(false),
-m_dmrNetwork3Connected(false),
-m_dmrNetwork4Connected(false),
-m_dmrNetwork5Connected(false),
-m_dmrNetwork6Connected(false),
-
-m_dmr1Voice = NULL;
-m_dmr2Voice = NULL;
-m_dmr3Voice = NULL;
-m_dmr4Voice = NULL;
-m_dmr5Voice = NULL;
-m_dmr6Voice = NULL;
-
-	int ret = 0;
-if (m_conf.getVoiceEnabled()) {
-    LogMessage("Voice enabled for DMR Networks");
-    m_dmr1Voice = new CVoice(m_conf.getVoiceDirectory(), m_conf.getVoiceLanguage(), 1U);
-    m_dmr2Voice = new CVoice(m_conf.getVoiceDirectory(), m_conf.getVoiceLanguage(), 2U);
-    m_dmr3Voice = new CVoice(m_conf.getVoiceDirectory(), m_conf.getVoiceLanguage(), 3U);
-    m_dmr4Voice = new CVoice(m_conf.getVoiceDirectory(), m_conf.getVoiceLanguage(), 4U);
-    m_dmr5Voice = new CVoice(m_conf.getVoiceDirectory(), m_conf.getVoiceLanguage(), 5U);
-    m_dmr6Voice = new CVoice(m_conf.getVoiceDirectory(), m_conf.getVoiceLanguage(), 6U);
-    // ... initialize others
-}
-
-
-
 m_remoteControl(NULL)
 {
 	CUDPSocket::startup();
@@ -459,14 +413,7 @@ int CDMRGateway::run()
 		::fprintf(stderr, "DMRGateway: cannot read the .ini file\n");
 		return 1;
 	}
-if (m_conf.getVoiceEnabled()) {
-        m_dmr1Voice = new CXLXVoice(m_conf.getVoiceLanguage(), m_conf.getVoiceDirectory());
-        m_dmr2Voice = new CXLXVoice(m_conf.getVoiceLanguage(), m_conf.getVoiceDirectory());
-        m_dmr3Voice = new CXLXVoice(m_conf.getVoiceLanguage(), m_conf.getVoiceDirectory());
-        m_dmr4Voice = new CXLXVoice(m_conf.getVoiceLanguage(), m_conf.getVoiceDirectory());
-        m_dmr5Voice = new CXLXVoice(m_conf.getVoiceLanguage(), m_conf.getVoiceDirectory());
-        m_dmr6Voice = new CXLXVoice(m_conf.getVoiceLanguage(), m_conf.getVoiceDirectory());
-    }
+
 #if !defined(_WIN32) && !defined(_WIN64)
 	bool m_daemon = m_conf.getDaemon();
 	if (m_daemon) {
@@ -1118,26 +1065,6 @@ if (m_conf.getVoiceEnabled()) {
 	if ( trace ) LogInfo("XLX Mode Selected  Selnet = %d", selnet );
 
 }
-
-if (slotNo == m_dmr1Slot && dstId == m_dmr1TG && m_dmr1Voice != NULL) {
-    m_dmr1Voice->announceTalkgroup(dstId);
-}
-if (slotNo == m_dmr2Slot && dstId == m_dmr2TG && m_dmr2Voice != NULL) {
-    m_dmr2Voice->announceTalkgroup(dstId);
-}
-if (slotNo == m_dmr3Slot && dstId == m_dmr3TG && m_dmr3Voice != NULL) {
-    m_dmr3Voice->announceTalkgroup(dstId);
-}
-if (slotNo == m_dmr4Slot && dstId == m_dmr4TG && m_dmr4Voice != NULL) {
-    m_dmr4Voice->announceTalkgroup(dstId);
-}
-if (slotNo == m_dmr5Slot && dstId == m_dmr5TG && m_dmr5Voice != NULL) {
-    m_dmr5Voice->announceTalkgroup(dstId);
-}
-if (slotNo == m_dmr6Slot && dstId == m_dmr6TG && m_dmr6Voice != NULL) {
-    m_dmr6Voice->announceTalkgroup(dstId);
-}
-
 				if (m_network1Enabled && (m_dmrNetwork1 != NULL) && rf1ok && ok2tx) {
 					// Rewrite the slot and/or TG or neither
 					for (std::vector<CRewrite*>::iterator it = m_dmr1RFRewrites.begin(); it != m_dmr1RFRewrites.end(); ++it) {
@@ -1157,20 +1084,6 @@ if (slotNo == m_dmr6Slot && dstId == m_dmr6TG && m_dmr6Voice != NULL) {
 							timer[slotNo]->start();
 							if (trace) LogInfo("RFRX Net 1 Dest: %d From: %d", dstId, srcId);
 						}
-					}
-
-					if (m_network1Enabled && m_dmrNetwork1 != NULL) {
-					    	bool connected = m_dmrNetwork1->isConnected();
-    					   	if (connected && !m_dmrNetwork1Connected) {
-        						LogMessage("DMR Network 1, Connected to %s", m_dmrNetwork1->getName().c_str());
-        						if (m_dmr1Voice != NULL) m_dmr1Voice->announce("connected");
-        						m_dmrNetwork1Connected = true;
-    						} else if (!connected && m_dmrNetwork1Connected) LogMessage("DMR Network 1, Disconnected");
-        					if (m_dmr1Voice != NULL) m_dmr1Voice->announce("disconnected");
-        					m_dmrNetwork1Connected = false;
-    								
-							
-						
 					}
 				}
 
