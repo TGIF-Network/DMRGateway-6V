@@ -104,6 +104,23 @@ void SetUserRoot();
 static bool m_killed = false;
 static int  m_signal = 0;
 
+m_dmr1Voice = NULL;
+m_dmr2Voice = NULL;
+m_dmr3Voice = NULL;
+m_dmr4Voice = NULL;
+m_dmr5Voice = NULL;
+m_dmr6Voice = NULL;
+
+if (m_conf.getVoiceEnabled()) {
+    LogMessage("Voice enabled for DMR Networks");
+    m_dmr1Voice = new CVoice(m_conf.getVoiceDirectory(), m_conf.getVoiceLanguage(), 1U);
+    m_dmr2Voice = new CVoice(m_conf.getVoiceDirectory(), m_conf.getVoiceLanguage(), 2U);
+    m_dmr3Voice = new CVoice(m_conf.getVoiceDirectory(), m_conf.getVoiceLanguage(), 3U);
+    m_dmr4Voice = new CVoice(m_conf.getVoiceDirectory(), m_conf.getVoiceLanguage(), 4U);
+    m_dmr5Voice = new CVoice(m_conf.getVoiceDirectory(), m_conf.getVoiceLanguage(), 5U);
+    m_dmr6Voice = new CVoice(m_conf.getVoiceDirectory(), m_conf.getVoiceLanguage(), 6U);
+    // ... initialize others
+}
 
 #if !defined(_WIN32) && !defined(_WIN64)
 static void sigHandler(int signum)
@@ -143,6 +160,9 @@ int main(int argc, char** argv)
 	::signal(SIGTERM, sigHandler);
 	::signal(SIGHUP,  sigHandler);
 #endif
+
+	int ret = 0;
+
 
 	do {
 		m_signal = 0;
@@ -276,26 +296,7 @@ m_dmrNetwork3Connected(false),
 m_dmrNetwork4Connected(false),
 m_dmrNetwork5Connected(false),
 m_dmrNetwork6Connected(false),
-
-m_dmr1Voice = NULL;
-m_dmr2Voice = NULL;
-m_dmr3Voice = NULL;
-m_dmr4Voice = NULL;
-m_dmr5Voice = NULL;
-m_dmr6Voice = NULL;
-
-	int ret = 0;
-if (m_conf.getVoiceEnabled()) {
-    LogMessage("Voice enabled for DMR Networks");
-    m_dmr1Voice = new CVoice(m_conf.getVoiceDirectory(), m_conf.getVoiceLanguage(), 1U);
-    m_dmr2Voice = new CVoice(m_conf.getVoiceDirectory(), m_conf.getVoiceLanguage(), 2U);
-    m_dmr3Voice = new CVoice(m_conf.getVoiceDirectory(), m_conf.getVoiceLanguage(), 3U);
-    m_dmr4Voice = new CVoice(m_conf.getVoiceDirectory(), m_conf.getVoiceLanguage(), 4U);
-    m_dmr5Voice = new CVoice(m_conf.getVoiceDirectory(), m_conf.getVoiceLanguage(), 5U);
-    m_dmr6Voice = new CVoice(m_conf.getVoiceDirectory(), m_conf.getVoiceLanguage(), 6U);
-    // ... initialize others
-}
-
+m_dmr6TG(1000U, 0U, 0U) // Initialize CTimer with valid parameters
 
 
 m_remoteControl(NULL)
