@@ -113,12 +113,12 @@ m_dmr6Voice = NULL;
 
 if (m_conf.getVoiceEnabled()) {
     LogMessage("Voice enabled for DMR Networks");
-    m_dmr1Voice = new CVoice(m_conf.getVoiceDir(), m_conf.getVoiceLanguage(), 1U);
-    m_dmr2Voice = new CVoice(m_conf.getVoiceDir(), m_conf.getVoiceLanguage(), 2U);
-    m_dmr3Voice = new CVoice(m_conf.getVoiceDir(), m_conf.getVoiceLanguage(), 3U);
-    m_dmr4Voice = new CVoice(m_conf.getVoiceDir(), m_conf.getVoiceLanguage(), 4U);
-    m_dmr5Voice = new CVoice(m_conf.getVoiceDir(), m_conf.getVoiceLanguage(), 5U);
-    m_dmr6Voice = new CVoice(m_conf.getVoiceDir(), m_conf.getVoiceLanguage(), 6U);
+    m_dmr1Voice = new CVoice(m_conf.getVoiceDirectory(), m_conf.getVoiceLanguage(), 1U);
+    m_dmr2Voice = new CVoice(m_conf.getVoiceDirectory(), m_conf.getVoiceLanguage(), 2U);
+    m_dmr3Voice = new CVoice(m_conf.getVoiceDirectory(), m_conf.getVoiceLanguage(), 3U);
+    m_dmr4Voice = new CVoice(m_conf.getVoiceDirectory(), m_conf.getVoiceLanguage(), 4U);
+    m_dmr5Voice = new CVoice(m_conf.getVoiceDirectory(), m_conf.getVoiceLanguage(), 5U);
+    m_dmr6Voice = new CVoice(m_conf.getVoiceDirectory(), m_conf.getVoiceLanguage(), 6U);
     // ... initialize others
 }
 
@@ -192,7 +192,7 @@ int main(int argc, char** argv)
 
 CDMRGateway::CDMRGateway(const std::string& confFile) :
 m_conf(confFile),
-m_xlxVoice(NULL),
+	m_xlxVoice(NULL),
     m_dmr1Voice(NULL),
     m_dmr2Voice(NULL),
     m_dmr3Voice(NULL),
@@ -210,7 +210,7 @@ m_xlxVoice(NULL),
     m_dmr5Slot(0U),
     m_dmr5TG(0U),
     m_dmr6Slot(0U),
-    m_dmr6TG(0U)
+    m_dmr6TG(0U),
 m_status(NULL),
 m_repeater(NULL),
 m_config(NULL),
@@ -247,7 +247,6 @@ m_xlxUserControl(true),
 m_xlxModule(),
 m_rptRewrite(NULL),
 m_xlxRewrite(NULL),
-m_xlxVoice(NULL),
 m_dmr1NetRewrites(),
 m_dmr1RFRewrites(),
 m_dmr1SrcRewrites(),
@@ -289,6 +288,17 @@ m_network4Enabled(false),
 m_network5Enabled(false),
 m_network6Enabled(false),
 m_networkXlxEnabled(false),
+
+
+m_dmrNetwork1Connected(false),
+m_dmrNetwork2Connected(false),
+m_dmrNetwork3Connected(false),
+m_dmrNetwork4Connected(false),
+m_dmrNetwork5Connected(false),
+m_dmrNetwork6Connected(false),
+m_dmr6TG(1000U, 0U, 0U) // Initialize CTimer with valid parameters
+
+
 m_remoteControl(NULL)
 {
 	CUDPSocket::startup();
@@ -450,7 +460,14 @@ int CDMRGateway::run()
 		::fprintf(stderr, "DMRGateway: cannot read the .ini file\n");
 		return 1;
 	}
-
+if (m_conf.getVoiceEnabled()) {
+        m_dmr1Voice = new CXLXVoice(m_conf.getVoiceLanguage(), m_conf.getVoiceDirectory());
+        m_dmr2Voice = new CXLXVoice(m_conf.getVoiceLanguage(), m_conf.getVoiceDirectory());
+        m_dmr3Voice = new CXLXVoice(m_conf.getVoiceLanguage(), m_conf.getVoiceDirectory());
+        m_dmr4Voice = new CXLXVoice(m_conf.getVoiceLanguage(), m_conf.getVoiceDirectory());
+        m_dmr5Voice = new CXLXVoice(m_conf.getVoiceLanguage(), m_conf.getVoiceDirectory());
+        m_dmr6Voice = new CXLXVoice(m_conf.getVoiceLanguage(), m_conf.getVoiceDirectory());
+    }
 #if !defined(_WIN32) && !defined(_WIN64)
 	bool m_daemon = m_conf.getDaemon();
 	if (m_daemon) {
@@ -1143,18 +1160,18 @@ if (slotNo == m_dmr6Slot && dstId == m_dmr6TG && m_dmr6Voice != NULL) {
 						}
 					}
 
-					if (m_network1Enabled && m_dmr1Network != NULL) {
-					    	bool connected = m_dmr1Network->isConnected();
-    					   	if (connected && !m_dmr1Connected) {
-        						LogMessage("DMR Network 1, Connected to %s", m_dmr1Network->getName().c_str());
+					if (m_network1Enabled && m_dmrNetwork1 != NULL) {
+					    	bool connected = m_dmrNetwork1->isConnected();
+    					   	if (connected && !m_dmrNetwork1Connected) {
+        						LogMessage("DMR Network 1, Connected to %s", m_dmrNetwork1->getName().c_str());
         						if (m_dmr1Voice != NULL) m_dmr1Voice->announce("connected");
-        						m_dmr1Connected = true;
-    							} else if (!connected && m_dmr1Connected) LogMessage("DMR Network 1, Disconnected");
-        						if (m_dmr1Voice != NULL) m_dmr1Voice->announce("disconnected");
-        						m_dmr1Connected = false;
+        						m_dmrNetwork1Connected = true;
+    						} else if (!connected && m_dmrNetwork1Connected) LogMessage("DMR Network 1, Disconnected");
+        					if (m_dmr1Voice != NULL) m_dmr1Voice->announce("disconnected");
+        					m_dmrNetwork1Connected = false;
     								
 							
-						}
+						
 					}
 				}
 

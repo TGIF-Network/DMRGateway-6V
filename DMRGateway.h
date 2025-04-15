@@ -185,7 +185,13 @@ unsigned int m_dmr1Slot;
 	void remoteControl();
 	void processEnableCommand(CDMRNetwork* network, const std::string& name, bool& mode, bool enabled);
 	void buildNetworkStatusNetworkString(std::string &str, const std::string& name, CDMRNetwork* network, bool enabled);
-
+	
+    bool                m_dmrNetwork1Connected; // Add connected flags
+    bool                m_dmrNetwork2Connected;
+    bool                m_dmrNetwork3Connected;
+    bool                m_dmrNetwork4Connected;
+    bool                m_dmrNetwork5Connected;
+    bool                m_dmrNetwork6Connected;
 
 };
 
