@@ -104,6 +104,24 @@ void SetUserRoot();
 static bool m_killed = false;
 static int  m_signal = 0;
 
+m_dmr1Voice = NULL;
+m_dmr2Voice = NULL;
+m_dmr3Voice = NULL;
+m_dmr4Voice = NULL;
+m_dmr5Voice = NULL;
+m_dmr6Voice = NULL;
+
+if (m_conf.getVoiceEnabled()) {
+    LogMessage("Voice enabled for DMR Networks");
+    m_dmr1Voice = new CVoice(m_conf.getVoiceDir(), m_conf.getVoiceLanguage(), 1U);
+    m_dmr2Voice = new CVoice(m_conf.getVoiceDir(), m_conf.getVoiceLanguage(), 2U);
+    m_dmr3Voice = new CVoice(m_conf.getVoiceDir(), m_conf.getVoiceLanguage(), 3U);
+    m_dmr4Voice = new CVoice(m_conf.getVoiceDir(), m_conf.getVoiceLanguage(), 4U);
+    m_dmr5Voice = new CVoice(m_conf.getVoiceDir(), m_conf.getVoiceLanguage(), 5U);
+    m_dmr6Voice = new CVoice(m_conf.getVoiceDir(), m_conf.getVoiceLanguage(), 6U);
+    // ... initialize others
+}
+
 #if !defined(_WIN32) && !defined(_WIN64)
 static void sigHandler(int signum)
 {
@@ -174,6 +192,25 @@ int main(int argc, char** argv)
 
 CDMRGateway::CDMRGateway(const std::string& confFile) :
 m_conf(confFile),
+m_xlxVoice(NULL),
+    m_dmr1Voice(NULL),
+    m_dmr2Voice(NULL),
+    m_dmr3Voice(NULL),
+    m_dmr4Voice(NULL),
+    m_dmr5Voice(NULL),
+    m_dmr6Voice(NULL),
+    m_dmr1Slot(0U),
+    m_dmr1TG(0U),
+    m_dmr2Slot(0U),
+    m_dmr2TG(0U),
+    m_dmr3Slot(0U),
+    m_dmr3TG(0U),
+    m_dmr4Slot(0U),
+    m_dmr4TG(0U),
+    m_dmr5Slot(0U),
+    m_dmr5TG(0U),
+    m_dmr6Slot(0U),
+    m_dmr6TG(0U)
 m_status(NULL),
 m_repeater(NULL),
 m_config(NULL),
@@ -1065,6 +1102,26 @@ int CDMRGateway::run()
 	if ( trace ) LogInfo("XLX Mode Selected  Selnet = %d", selnet );
 
 }
+
+if (slotNo == m_dmr1Slot && dstId == m_dmr1TG && m_dmr1Voice != NULL) {
+    m_dmr1Voice->announceTalkgroup(dstId);
+}
+if (slotNo == m_dmr2Slot && dstId == m_dmr2TG && m_dmr2Voice != NULL) {
+    m_dmr2Voice->announceTalkgroup(dstId);
+}
+if (slotNo == m_dmr3Slot && dstId == m_dmr3TG && m_dmr3Voice != NULL) {
+    m_dmr3Voice->announceTalkgroup(dstId);
+}
+if (slotNo == m_dmr4Slot && dstId == m_dmr4TG && m_dmr4Voice != NULL) {
+    m_dmr4Voice->announceTalkgroup(dstId);
+}
+if (slotNo == m_dmr5Slot && dstId == m_dmr5TG && m_dmr5Voice != NULL) {
+    m_dmr5Voice->announceTalkgroup(dstId);
+}
+if (slotNo == m_dmr6Slot && dstId == m_dmr6TG && m_dmr6Voice != NULL) {
+    m_dmr6Voice->announceTalkgroup(dstId);
+}
+
 				if (m_network1Enabled && (m_dmrNetwork1 != NULL) && rf1ok && ok2tx) {
 					// Rewrite the slot and/or TG or neither
 					for (std::vector<CRewrite*>::iterator it = m_dmr1RFRewrites.begin(); it != m_dmr1RFRewrites.end(); ++it) {
@@ -1083,6 +1140,20 @@ int CDMRGateway::run()
 							timer[slotNo]->setTimeout(rfTimeout);
 							timer[slotNo]->start();
 							if (trace) LogInfo("RFRX Net 1 Dest: %d From: %d", dstId, srcId);
+						}
+					}
+
+					if (m_network1Enabled && m_dmr1Network != NULL) {
+					    	bool connected = m_dmr1Network->isConnected();
+    					   	if (connected && !m_dmr1Connected) {
+        						LogMessage("DMR Network 1, Connected to %s", m_dmr1Network->getName().c_str());
+        						if (m_dmr1Voice != NULL) m_dmr1Voice->announce("connected");
+        						m_dmr1Connected = true;
+    							} else if (!connected && m_dmr1Connected) LogMessage("DMR Network 1, Disconnected");
+        						if (m_dmr1Voice != NULL) m_dmr1Voice->announce("disconnected");
+        						m_dmr1Connected = false;
+    								
+							
 						}
 					}
 				}

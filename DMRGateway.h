@@ -36,6 +36,7 @@
 #include "GPSD.h"
 
 #include <string>
+#include "XLXVoice.h"
 
 enum DMRGW_STATUS {
 	DMRGWS_NONE,
@@ -60,6 +61,26 @@ public:
 
 private:
 	CConf              m_conf;
+CXLXVoice* m_xlxVoice;  // For XLX reflectors
+CXLXVoice* m_dmr1Voice;
+CXLXVoice* m_dmr2Voice;
+CXLXVoice* m_dmr3Voice;
+CXLXVoice* m_dmr4Voice;
+CXLXVoice* m_dmr5Voice;
+CXLXVoice* m_dmr6Voice;
+unsigned int m_dmr1Slot;
+    unsigned int m_dmr1TG;
+    unsigned int m_dmr2Slot;
+    unsigned int m_dmr2TG;
+    unsigned int m_dmr3Slot;
+    unsigned int m_dmr3TG;
+    unsigned int m_dmr4Slot;
+    unsigned int m_dmr4TG;
+    unsigned int m_dmr5Slot;
+    unsigned int m_dmr5TG;
+    unsigned int m_dmr6Slot;
+    unsigned int m_dmr6TG;
+
 	DMRGW_STATUS*      m_status;
 	CMMDVMNetwork*     m_repeater;
 	unsigned char*     m_config;
@@ -96,7 +117,6 @@ private:
 	char               m_xlxModule;
 	CRewriteTG*        m_rptRewrite;
 	CRewriteTG*        m_xlxRewrite;
-	CXLXVoice*         m_xlxVoice;
 	std::vector<CRewrite*> m_dmr1NetRewrites;
 	std::vector<CRewrite*> m_dmr1RFRewrites;
 	std::vector<CRewrite*> m_dmr1SrcRewrites;
@@ -165,6 +185,8 @@ private:
 	void remoteControl();
 	void processEnableCommand(CDMRNetwork* network, const std::string& name, bool& mode, bool enabled);
 	void buildNetworkStatusNetworkString(std::string &str, const std::string& name, CDMRNetwork* network, bool enabled);
+
+
 };
 
 #endif

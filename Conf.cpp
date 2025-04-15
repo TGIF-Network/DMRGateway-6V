@@ -208,7 +208,13 @@ m_dynamicTGControlEnabled(false),
 m_dynamicTGControlPort(3769U),
 m_remoteControlEnabled(false),
 m_remoteControlAddress("127.0.0.1"),
-m_remoteControlPort(0U)
+m_remoteControlPort(0U),
+m_dmr1VoiceEnabled(false),
+    m_dmr2VoiceEnabled(false),
+    m_dmr3VoiceEnabled(false),
+    m_dmr4VoiceEnabled(false),
+    m_dmr5VoiceEnabled(false),
+    m_dmr6VoiceEnabled(false)
 {
 }
 

@@ -269,6 +269,14 @@ public:
 	std::string  getRemoteControlAddress() const;
 	unsigned short getRemoteControlPort() const;
 
+	// Enable Voice
+	bool getDMR1VoiceEnabled() const { return m_dmr1VoiceEnabled; }
+	bool getDMR2VoiceEnabled() const { return m_dmr2VoiceEnabled; }
+	bool getDMR3VoiceEnabled() const { return m_dmr3VoiceEnabled; }
+	bool getDMR4VoiceEnabled() const { return m_dmr4VoiceEnabled; }
+	bool getDMR5VoiceEnabled() const { return m_dmr5VoiceEnabled; }
+	bool getDMR6VoiceEnabled() const { return m_dmr6VoiceEnabled; }
+
 private:
 	std::string  m_file;
 	bool         m_daemon;
@@ -447,6 +455,14 @@ private:
 	bool         m_remoteControlEnabled;
 	std::string  m_remoteControlAddress;
 	unsigned short m_remoteControlPort;
+
+// Add voice-enabled flags for DMR Networks 1–6
+    bool        m_dmr1VoiceEnabled;
+    bool        m_dmr2VoiceEnabled;
+    bool        m_dmr3VoiceEnabled;
+    bool        m_dmr4VoiceEnabled;
+    bool        m_dmr5VoiceEnabled;
+    bool        m_dmr6VoiceEnabled;
 };
 
 #endif
