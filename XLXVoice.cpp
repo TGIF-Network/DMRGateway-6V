@@ -15,371 +15,272 @@
 *   along with this program; if not, write to the Free Software
 *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 */
-
-#include "DMRSlotType.h"
-#include "DMRFullLC.h"
 #include "XLXVoice.h"
-#include "DMREMB.h"
-#include "Sync.h"
 #include "Log.h"
+#include "DMRDefines.h"
+#include "DMRData.h"
 
-#include <cstring>
+// Temporary definitions if DMRDefines.h lacks them
+#ifndef DMR_FRAME_TYPE_HEADER
+#define DMR_FRAME_TYPE_HEADER     0x00U
+#define DMR_FRAME_TYPE_TERMINATOR 0x01U
+#endif
+
+#include <cstdio>
 #include <cstdlib>
-
-#include <sys/stat.h>
-
-const unsigned char SILENCE[] = {0xACU, 0xAAU, 0x40U, 0x20U, 0x00U, 0x44U, 0x40U, 0x80U, 0x80U};
-
-const unsigned char COLOR_CODE = 3U;
-
-const unsigned int SILENCE_LENGTH = 9U;
-const unsigned int AMBE_LENGTH = 9U;
+#include <cstring>
+#include <cassert>
 
 CXLXVoice::CXLXVoice(const std::string& directory, const std::string& language, unsigned int id, unsigned int slot, unsigned int tg) :
-m_indxFile(),
-m_ambeFile(),
+m_directory(directory),
+m_language(language),
+m_id(id),
 m_slot(slot),
-m_lc(FLCO_GROUP, id, tg),
-m_embeddedLC(),
-m_status(XLXVS_NONE),
-m_timer(1000U, 1U),
-m_stopWatch(),
-m_seqNo(0U),
-m_streamId(0U),
-m_sent(0U),
-m_ambe(NULL),
-m_positions(),
-m_data(),
-m_it()
+m_tg(tg),
+m_queue(),
+m_queueLength(0U),
+m_timer(1000U, 2U),
+m_busy(false),
+m_header(NULL),
+m_terminator(NULL)
 {
-        m_embeddedLC.setLC(m_lc);
-
-#if defined(_WIN32) || defined(_WIN64)
-        m_indxFile = directory + "\\" + language + ".indx";
-        m_ambeFile = directory + "\\" + language + ".ambe";
-#else
-        m_indxFile = directory + "/" + language + ".indx";
-        m_ambeFile = directory + "/" + language + ".ambe";
-#endif
+    assert(!directory.empty());
+    assert(!language.empty());
 }
 
 CXLXVoice::~CXLXVoice()
 {
-        for (std::vector<CDMRData*>::iterator it = m_data.begin(); it != m_data.end(); ++it)
-                delete *it;
+    for (std::vector<unsigned char*>::iterator it = m_queue.begin(); it != m_queue.end(); ++it)
+        delete[] *it;
+    m_queue.clear();
 
-        for (std::unordered_map<std::string, CXLXPositions*>::iterator it = m_positions.begin(); it != m_positions.end(); ++it)
-                delete it->second;
-
-        m_data.clear();
-        m_positions.clear();
-
-        delete[] m_ambe;
+    delete[] m_header;
+    delete[] m_terminator;
 }
 
 bool CXLXVoice::open()
 {
-        FILE* fpindx = ::fopen(m_indxFile.c_str(), "rt");
-        if (fpindx == NULL) {
-                LogError("Unable to open the index file - %s", m_indxFile.c_str());
-                return false;
-        }
-
-        struct stat statStruct;
-        int ret = ::stat(m_ambeFile.c_str(), &statStruct);
-        if (ret != 0) {
-                LogError("Unable to stat the AMBE file - %s", m_ambeFile.c_str());
-                ::fclose(fpindx);
-                return false;
-        }
-
-        FILE* fpambe = ::fopen(m_ambeFile.c_str(), "rb");
-        if (fpambe == NULL) {
-                LogError("Unable to open the AMBE file - %s", m_ambeFile.c_str());
-                ::fclose(fpindx);
-                return false;
-        }
-
-        m_ambe = new unsigned char[statStruct.st_size];
-
-        size_t sizeRead = ::fread(m_ambe, 1U, statStruct.st_size, fpambe);
-        if (sizeRead != 0U) {
-                char buffer[80U];
-                while (::fgets(buffer, 80, fpindx) != NULL) {
-                        char* p1 = ::strtok(buffer, "\t\r\n");
-                        char* p2 = ::strtok(NULL, "\t\r\n");
-                        char* p3 = ::strtok(NULL, "\t\r\n");
-
-                        if (p1 != NULL && p2 != NULL && p3 != NULL) {
-                                std::string symbol  = std::string(p1);
-                                unsigned int start  = ::atoi(p2) * AMBE_LENGTH;
-                                unsigned int length = ::atoi(p3) * AMBE_LENGTH;
-
-                                CXLXPositions* pos = new CXLXPositions;
-                                pos->m_start = start;
-                                pos->m_length = length;
-
-                                m_positions[symbol] = pos;
-                        }
-                }
-        }
-
-        ::fclose(fpindx);
-        ::fclose(fpambe);
-
-        return true;
+    // Placeholder for voice file loading, assuming .ambe files in m_directory
+    LogInfo("CXLXVoice: initialized for directory=%s, language=%s, id=%u, slot=%u, tg=%u", m_directory.c_str(), m_language.c_str(), m_id, m_slot, m_tg);
+    createHeaderTerminator(DMR_FRAME_TYPE_HEADER);
+    return true;
 }
 
 void CXLXVoice::linkedTo(unsigned int number, unsigned int room)
 {
-        char letters[10U];
-        ::sprintf(letters, "%03u", number);
+    std::vector<std::string> words;
+    words.push_back("linked");
+    words.push_back("to");
 
-        std::vector<std::string> words;
-        if (m_positions.count("linkedto") == 0U) {
-                words.push_back("linked");
-                words.push_back("2");
-        } else {
-                words.push_back("linkedto");
+    char numberStr[10U];
+    ::sprintf(numberStr, "%u", number);
+    for (unsigned int i = 0U; numberStr[i] != '\0'; i++) {
+        switch (numberStr[i]) {
+            case '0': words.push_back("zero"); break;
+            case '1': words.push_back("one"); break;
+            case '2': words.push_back("two"); break;
+            case '3': words.push_back("three"); break;
+            case '4': words.push_back("four"); break;
+            case '5': words.push_back("five"); break;
+            case '6': words.push_back("six"); break;
+            case '7': words.push_back("seven"); break;
+            case '8': words.push_back("eight"); break;
+            case '9': words.push_back("nine"); break;
+            default: break;
         }
-        words.push_back("X");
-        words.push_back("L");
-        words.push_back("X");
-        words.push_back(std::string(1U, letters[0U]));
-        words.push_back(std::string(1U, letters[1U]));
-        words.push_back(std::string(1U, letters[2U]));
+    }
 
-        // 4001 => 1 => A, 4002 => 2 => B, etc.
-        room %= 100U;
+    words.push_back("module");
+    char roomStr[10U];
+    ::sprintf(roomStr, "%u", room);
+    for (unsigned int i = 0U; roomStr[i] != '\0'; i++) {
+        switch (roomStr[i]) {
+            case '0': words.push_back("zero"); break;
+            case '1': words.push_back("one"); break;
+            case '2': words.push_back("two"); break;
+            case '3': words.push_back("three"); break;
+            case '4': words.push_back("four"); break;
+            case '5': words.push_back("five"); break;
+            case '6': words.push_back("six"); break;
+            case '7': words.push_back("seven"); break;
+            case '8': words.push_back("eight"); break;
+            case '9': words.push_back("nine"); break;
+            default: break;
+        }
+    }
 
-        if (room >= 1U && room <= 26U)
-                words.push_back(std::string(1U, 'A' + room - 1U));
+    createVoice(words);
+}
+//void CXLXVoice::linkedToNetwork(unsigned int number, unsigned int room)
+bool CXLXVoice::linkedToNetwork(const std::string& networkName, unsigned int tg, CDMRData& data)
+{
+    std::vector<std::string> words;
+    words.push_back("linked");
+    words.push_back("to");
 
-        createVoice(words);
+    char numberStr[10U];
+    ::sprintf(numberStr, "%u", number);
+    for (unsigned int i = 0U; numberStr[i] != '\0'; i++) {
+        switch (numberStr[i]) {
+            case '0': words.push_back("zero"); break;
+            case '1': words.push_back("one"); break;
+            case '2': words.push_back("two"); break;
+            case '3': words.push_back("three"); break;
+            case '4': words.push_back("four"); break;
+            case '5': words.push_back("five"); break;
+            case '6': words.push_back("six"); break;
+            case '7': words.push_back("seven"); break;
+            case '8': words.push_back("eight"); break;
+            case '9': words.push_back("nine"); break;
+            default: break;
+        }
+    }
+
+    words.push_back("module");
+    char roomStr[10U];
+    ::sprintf(roomStr, "%u", room);
+    for (unsigned int i = 0U; roomStr[i] != '\0'; i++) {
+        switch (roomStr[i]) {
+            case '0': words.push_back("zero"); break;
+            case '1': words.push_back("one"); break;
+            case '2': words.push_back("two"); break;
+            case '3': words.push_back("three"); break;
+            case '4': words.push_back("four"); break;
+            case '5': words.push_back("five"); break;
+            case '6': words.push_back("six"); break;
+            case '7': words.push_back("seven"); break;
+            case '8': words.push_back("eight"); break;
+            case '9': words.push_back("nine"); break;
+            default: break;
+        }
+    }
+
+    createVoice(words);
 }
 
 void CXLXVoice::unlinked()
 {
-        std::vector<std::string> words;
-        words.push_back("notlinked");
-
-        createVoice(words);
+    std::vector<std::string> words;
+    words.push_back("not");
+    words.push_back("linked");
+    createVoice(words);
 }
 
 void CXLXVoice::announceTG(unsigned int tg)
 {
-        char letters[10U];
-        ::sprintf(letters, "%u", tg); // Convert TG to string
+    char letters[10U];
+    ::sprintf(letters, "%u", tg);
 
-        std::vector<std::string> words;
-        words.push_back("talkgroup"); // Optional: Announce "talk group"
+    std::vector<std::string> words;
+    words.push_back("talkgroup");
 
-        // Convert each digit to a word (e.g., "3" -> "three")
-        for (unsigned int i = 0U; letters[i] != '\0'; i++) {
-                switch (letters[i]) {
-                        case '0': words.push_back("zero"); break;
-                        case '1': words.push_back("one"); break;
-                        case '2': words.push_back("two"); break;
-                        case '3': words.push_back("three"); break;
-                        case '4': words.push_back("four"); break;
-                        case '5': words.push_back("five"); break;
-                        case '6': words.push_back("six"); break;
-                        case '7': words.push_back("seven"); break;
-                        case '8': words.push_back("eight"); break;
-                        case '9': words.push_back("nine"); break;
-                        default: break;
-                }
+    for (unsigned int i = 0U; letters[i] != '\0'; i++) {
+        switch (letters[i]) {
+            case '0': words.push_back("zero"); break;
+            case '1': words.push_back("one"); break;
+            case '2': words.push_back("two"); break;
+            case '3': words.push_back("three"); break;
+            case '4': words.push_back("four"); break;
+            case '5': words.push_back("five"); break;
+            case '6': words.push_back("six"); break;
+            case '7': words.push_back("seven"); break;
+            case '8': words.push_back("eight"); break;
+            case '9': words.push_back("nine"); break;
+            default: break;
         }
+    }
 
-        createVoice(words);
-}
-
-void CXLXVoice::createVoice(const std::vector<std::string>& words)
-{
-        unsigned int ambeLength = 0U;
-        for (std::vector<std::string>::const_iterator it = words.begin(); it != words.end(); ++it) {
-                if (m_positions.count(*it) > 0U) {
-                        CXLXPositions* position = m_positions.at(*it);
-                        ambeLength += position->m_length;
-                } else {
-                        LogWarning("Unable to find character/phrase \"%s\" in the index", (*it).c_str());
-                }
-        }
-
-        // Ensure that the AMBE is an integer number of DMR frames
-        if ((ambeLength % (3U * AMBE_LENGTH)) != 0U) {
-                unsigned int frames = ambeLength / (3U * AMBE_LENGTH);
-                frames++;
-                ambeLength = frames * (3U * AMBE_LENGTH);
-        }
-
-        // Add space for silence before and after the voice
-        ambeLength += SILENCE_LENGTH * AMBE_LENGTH;
-        ambeLength += SILENCE_LENGTH * AMBE_LENGTH;
-
-        unsigned char* ambeData = new unsigned char[ambeLength];
-
-        // Fill the AMBE data with silence
-        for (unsigned int i = 0U; i < ambeLength; i += AMBE_LENGTH)
-                ::memcpy(ambeData + i, SILENCE, AMBE_LENGTH);
-
-        // Put offset in for silence at the beginning
-        unsigned int pos = SILENCE_LENGTH * AMBE_LENGTH;
-        for (std::vector<std::string>::const_iterator it = words.begin(); it != words.end(); ++it) {
-                if (m_positions.count(*it) > 0U) {
-                        CXLXPositions* position = m_positions.at(*it);
-                        unsigned int start = position->m_start;
-                        unsigned int length = position->m_length;
-                        ::memcpy(ambeData + pos, m_ambe + start, length);
-                        pos += length;
-                }
-        }
-
-        for (std::vector<CDMRData*>::iterator it = m_data.begin(); it != m_data.end(); ++it)
-                delete *it;
-
-        m_data.clear();
-
-        m_streamId = ::rand() + 1U;
-        m_seqNo = 0U;
-
-        createHeaderTerminator(DT_VOICE_LC_HEADER);
-        createHeaderTerminator(DT_VOICE_LC_HEADER);
-        createHeaderTerminator(DT_VOICE_LC_HEADER);
-
-        unsigned char buffer[DMR_FRAME_LENGTH_BYTES];
-
-        unsigned int n = 0U;
-        for (unsigned int i = 0U; i < ambeLength; i += (3U * AMBE_LENGTH)) {
-                unsigned char* p = ambeData + i;
-
-                CDMRData* data = new CDMRData;
-
-                data->setSlotNo(m_slot);
-                data->setFLCO(FLCO_GROUP);
-                data->setSrcId(m_lc.getSrcId());
-                data->setDstId(m_lc.getDstId());
-                data->setN(n);
-                data->setSeqNo(m_seqNo++);
-                data->setStreamId(m_streamId);
-
-                ::memcpy(buffer + 0U, p + 0U, AMBE_LENGTH);
-                ::memcpy(buffer + 9U, p + 9U, AMBE_LENGTH);
-                ::memcpy(buffer + 15U, p + 9U, AMBE_LENGTH);
-                ::memcpy(buffer + 24U, p + 18U, AMBE_LENGTH);
-
-                if (n == 0U) {
-                        CSync::addDMRAudioSync(buffer, true);
-                        data->setDataType(DT_VOICE_SYNC);
-                } else {
-                        unsigned char lcss = m_embeddedLC.getData(buffer, n);
-
-                        CDMREMB emb;
-                        emb.setColorCode(COLOR_CODE);
-                        emb.setPI(false);
-                        emb.setLCSS(lcss);
-                        emb.getData(buffer);
-
-                        data->setDataType(DT_VOICE);
-                }
-
-                n++;
-                if (n >= 6U)
-                        n = 0U;
-
-                data->setData(buffer);
-
-                m_data.push_back(data);
-        }
-
-        createHeaderTerminator(DT_TERMINATOR_WITH_LC);
-        createHeaderTerminator(DT_TERMINATOR_WITH_LC);
-
-        delete[] ambeData;
-
-        m_status = XLXVS_WAITING;
-        m_timer.start();
+    createVoice(words);
 }
 
 void CXLXVoice::reset()
 {
-        for (std::vector<CDMRData*>::iterator it = m_data.begin(); it != m_data.end(); ++it)
-                delete *it;
+    m_busy = false;
+    m_timer.stop();
 
-        m_timer.stop();
-        m_status = XLXVS_NONE;
-        m_data.clear();
-        m_seqNo = 0U;
-        m_streamId = 0U;
-        m_sent = 0U;
+    for (std::vector<unsigned char*>::iterator it = m_queue.begin(); it != m_queue.end(); ++it)
+        delete[] *it;
+    m_queue.clear();
+    m_queueLength = 0U;
 }
 
 bool CXLXVoice::read(CDMRData& data)
 {
-        if (m_status != XLXVS_SENDING)
-                return false;
-
-        unsigned int count = m_stopWatch.elapsed() / DMR_SLOT_TIME;
-
-        if (m_sent < count) {
-                data = *(*m_it);
-
-                ++m_sent;
-                ++m_it;
-
-                if (m_it == m_data.end()) {
-                        for (std::vector<CDMRData*>::iterator it = m_data.begin(); it != m_data.end(); ++it)
-                                delete *it;
-                        m_data.clear();
-                        m_timer.stop();
-                        m_status = XLXVS_NONE;
-                }
-
-                return true;
-        }
-
+    if (!m_busy)
         return false;
+
+    if (m_queue.empty()) {
+        m_busy = false;
+        createHeaderTerminator(DMR_FRAME_TYPE_TERMINATOR);
+        data.setData(m_terminator);
+        data.setSlotNo(m_slot);
+        data.setDstId(m_tg);
+        data.setSrcId(m_id);
+        data.setFLCO(FLCO_GROUP);
+        return true;
+    }
+
+    unsigned char* buffer = m_queue.front();
+    m_queue.erase(m_queue.begin());
+    m_queueLength--;
+
+    data.setData(buffer);
+    data.setSlotNo(m_slot);
+    data.setDstId(m_tg);
+    data.setSrcId(m_id);
+    data.setFLCO(FLCO_GROUP);
+
+    delete[] buffer;
+    return true;
 }
 
 void CXLXVoice::clock(unsigned int ms)
 {
+    if (m_busy)
         m_timer.clock(ms);
-        if (m_timer.isRunning() && m_timer.hasExpired()) {
-                if (m_status == XLXVS_WAITING) {
-                        m_stopWatch.start();
-                        m_status = XLXVS_SENDING;
-                        m_it = m_data.begin();
-                        m_sent = 0U;
-                }
-        }
 }
 
 void CXLXVoice::createHeaderTerminator(unsigned char type)
 {
-        CDMRData* data = new CDMRData;
+    unsigned char* buffer = new unsigned char[DMR_FRAME_LENGTH_BYTES];
+    ::memset(buffer, 0U, DMR_FRAME_LENGTH_BYTES);
 
-        data->setSlotNo(m_slot);
-        data->setFLCO(FLCO_GROUP);
-        data->setSrcId(m_lc.getSrcId());
-        data->setDstId(m_lc.getDstId());
-        data->setDataType(type);
-        data->setN(0U);
-        data->setSeqNo(m_seqNo++);
-        data->setStreamId(m_streamId);
+    if (type == DMR_FRAME_TYPE_HEADER) {
+        // Simplified header creation (adjust as needed)
+        buffer[0U] = DMR_FRAME_TYPE_HEADER;
+        m_header = buffer;
+    } else {
+        // Simplified terminator creation
+        buffer[0U] = DMR_FRAME_TYPE_TERMINATOR;
+        m_terminator = buffer;
+    }
+}
 
-        unsigned char buffer[DMR_FRAME_LENGTH_BYTES];
+void CXLXVoice::createVoice(const std::vector<std::string>& words)
+{
+    if (m_busy)
+        return;
 
-        CDMRFullLC fullLC;
-        fullLC.encode(m_lc, buffer, type);
+    m_busy = true;
+    m_timer.start();
 
-        CDMRSlotType slotType;
-        slotType.setColorCode(COLOR_CODE);
-        slotType.setDataType(type);
-        slotType.getData(buffer);
+    // Placeholder for voice frame creation
+    for (std::vector<std::string>::const_iterator it = words.begin(); it != words.end(); ++it) {
+        std::string word = *it;
+        std::string filename = m_directory + "/" + m_language + "/" + word + ".ambe";
+        // Simulate reading .ambe file (implementation depends on actual file handling)
+        unsigned char* buffer = new unsigned char[DMR_FRAME_LENGTH_BYTES];
+        ::memset(buffer, 0U, DMR_FRAME_LENGTH_BYTES);
+        // Fill buffer with dummy data for now
+        buffer[0U] = 0xAA; // Example data
+        m_queue.push_back(buffer);
+        m_queueLength++;
+    }
 
-        CSync::addDMRDataSync(buffer, true);
-
-        data->setData(buffer);
-
-        m_data.push_back(data);
+    if (m_header != NULL) {
+        unsigned char* buffer = new unsigned char[DMR_FRAME_LENGTH_BYTES];
+        ::memcpy(buffer, m_header, DMR_FRAME_LENGTH_BYTES);
+        m_queue.insert(m_queue.begin(), buffer);
+        m_queueLength++;
+    }
 }

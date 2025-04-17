@@ -210,6 +210,20 @@ m_remoteControlEnabled(false),
 m_remoteControlAddress("127.0.0.1"),
 m_remoteControlPort(0U),
 m_dmr1VoiceEnabled(false),
+/*
+std::string CConf::getDMRNetwork1Name() const { return m_dmrNetwork1Name; }
+unsigned int CConf::getDMRNetwork1StaticTG() const { return m_network1StaticTG; }
+std::string CConf::getDMRNetwork2Name() const { return m_dmrNetwork2Name; }
+unsigned int CConf::getDMRNetwork2StaticTG() const { return m_network2StaticTG; }
+std::string CConf::getDMRNetwork3Name() const { return m_dmrNetwork3Name; }
+unsigned int CConf::getDMRNetwork3StaticTG() const { return m_network3StaticTG; }
+std::string CConf::getDMRNetwork4Name() const { return m_dmrNetwork4Name; }
+unsigned int CConf::geDMRNetwork4StaticTG() const { return m_network4StaticTG; }
+std::string CConf::getDMRNetwork5Name() const { return m_dmrNetwork5Name; }
+unsigned int CConf::getDMRNetwork5StaticTG() const { return m_network5StaticTG; }
+std::string CConf::getDMRNetwork6Name() const { return m_dmrNetwork6Name; }
+unsigned int CConf::getDMRNetwork6StaticTG() const { return m_network6StaticTG; }
+*/
     m_dmr2VoiceEnabled(false),
     m_dmr3VoiceEnabled(false),
     m_dmr4VoiceEnabled(false),

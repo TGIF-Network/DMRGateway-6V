@@ -16,65 +16,49 @@
 *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 */
 
-#if !defined(XLXVoice_H)
+#ifndef XLXVoice_H
 #define XLXVoice_H
-
-#include "DMREmbeddedData.h"
-#include "StopWatch.h"
-#include "DMRData.h"
-#include "DMRLC.h"
-#include "Timer.h"
 
 #include <string>
 #include <vector>
-#include <unordered_map>
 
-enum XLXVOICE_STATUS {
-        XLXVS_NONE,
-        XLXVS_WAITING,
-        XLXVS_SENDING
-};
-
-struct CXLXPositions {
-        unsigned int m_start;
-        unsigned int m_length;
-};
+#include "DMRData.h"
+#include "Timer.h"
 
 class CXLXVoice {
 public:
-        CXLXVoice(const std::string& directory, const std::string& language, unsigned int id, unsigned int slot, unsigned int tg);
-        ~CXLXVoice();
+    CXLXVoice(const std::string& directory, const std::string& language, unsigned int id, unsigned int slot, unsigned int tg);
+    virtual ~CXLXVoice();
+    bool open();
+//    void linkedTo(unsigned int number, unsigned int room);
+//    void unlinked();
+    void announceTG(unsigned int tg);
+    void reset();
+    bool read(CDMRData& data);
+    void clock(unsigned int ms);
+    bool linkedToNetwork(const std::string& networkName, unsigned int tg, CDMRData& data);
+    bool unlinkedNetwork(const std::string& networkName, CDMRData& data);
 
-        bool open();
+bool isValid() const;
+    bool linkedTo(const std::string& number, unsigned int reflector, CDMRData& data);
+    bool unlinked(CDMRData& data);
 
-        void linkedTo(unsigned int number, unsigned int room);
-        void unlinked();
-        void announceTG(unsigned int tg); // New method for TG announcement
-
-        void reset();
-
-        bool read(CDMRData& data);
-
-        void clock(unsigned int ms);
 
 private:
-        std::string                            m_indxFile;
-        std::string                            m_ambeFile;
-        unsigned int                           m_slot;
-        CDMRLC                                 m_lc;
-        CDMREmbeddedData                       m_embeddedLC;
-        XLXVOICE_STATUS                        m_status;
-        CTimer                                 m_timer;
-        CStopWatch                             m_stopWatch;
-        unsigned int                           m_seqNo;
-        unsigned int                           m_streamId;
-        unsigned int                           m_sent;
-        unsigned char*                         m_ambe;
-        std::unordered_map<std::string, CXLXPositions*> m_positions;
-        std::vector<CDMRData*>                 m_data;
-        std::vector<CDMRData*>::const_iterator m_it;
+    std::string m_directory;
+    std::string m_language;
+    unsigned int m_id;
+    unsigned int m_slot;
+    unsigned int m_tg;
+    std::vector<unsigned char*> m_queue;
+    unsigned int m_queueLength;
+    CTimer m_timer;
+    bool m_busy;
+    unsigned char* m_header;
+    unsigned char* m_terminator;
 
-        void createHeaderTerminator(unsigned char type);
-        void createVoice(const std::vector<std::string>& words);
+    void createHeaderTerminator(unsigned char type);
+    void createVoice(const std::vector<std::string>& words);
 };
+
 #endif
