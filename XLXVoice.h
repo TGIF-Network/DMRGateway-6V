@@ -19,46 +19,37 @@
 #ifndef XLXVoice_H
 #define XLXVoice_H
 
-#include <string>
-#include <vector>
-
 #include "DMRData.h"
+#include "DMREmbeddedData.h"
 #include "Timer.h"
+
+#include <string>
 
 class CXLXVoice {
 public:
     CXLXVoice(const std::string& directory, const std::string& language, unsigned int id, unsigned int slot, unsigned int tg);
-    virtual ~CXLXVoice();
+    ~CXLXVoice();
     bool open();
-//    void linkedTo(unsigned int number, unsigned int room);
-//    void unlinked();
-    void announceTG(unsigned int tg);
-    void reset();
-    bool read(CDMRData& data);
-    void clock(unsigned int ms);
-    bool linkedToNetwork(const std::string& networkName, unsigned int tg, CDMRData& data);
-    bool unlinkedNetwork(const std::string& networkName, CDMRData& data);
-
-bool isValid() const;
-    bool linkedTo(const std::string& number, unsigned int reflector, CDMRData& data);
+    bool linked(CDMRData& data, const std::string& callsign, unsigned int number, unsigned int reflector);
     bool unlinked(CDMRData& data);
-
-
+    void announce(const std::string& mode, const std::string& network, unsigned int tg);
+    void clock(unsigned int ms);
 private:
-    std::string m_directory;
-    std::string m_language;
-    unsigned int m_id;
-    unsigned int m_slot;
-    unsigned int m_tg;
-    std::vector<unsigned char*> m_queue;
-    unsigned int m_queueLength;
-    CTimer m_timer;
-    bool m_busy;
-    unsigned char* m_header;
-    unsigned char* m_terminator;
-
-    void createHeaderTerminator(unsigned char type);
-    void createVoice(const std::vector<std::string>& words);
+    std::string      m_directory;
+    std::string      m_language;
+    unsigned int     m_id;
+    unsigned int     m_slot;
+    unsigned int     m_tg;
+    CDMRData         m_dmr;
+    CDMREmbeddedData m_embedded;
+    CTimer           m_timer;
+    unsigned char*   m_wavData;
+    unsigned int     m_wavLength;
+    unsigned int     m_pos;
+    unsigned int     m_seqNo;
+    unsigned int     m_dstId;
+    bool             m_sent;
+    void addData(unsigned char dataType);
 };
 
 #endif

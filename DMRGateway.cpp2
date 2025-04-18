@@ -1,0 +1,788 @@
+#include "DMRGateway.h"
+#include "Version.h"
+#include "StopWatch.h"
+#include "Thread.h"
+#include "Timer.h"
+#include "Log.h"
+
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+
+#if !defined(_WIN32) && !defined(_WIN64)
+#include <unistd.h>
+#include <pwd.h>
+#endif
+
+CDMRGateway::CDMRGateway(const std::string& confFile) :
+m_conf(confFile),
+m_repeater(NULL),
+m_dmrNetwork1(NULL),
+m_dmrNetwork2(NULL),
+m_dmrNetwork3(NULL),
+m_dmrNetwork4(NULL),
+m_dmrNetwork5(NULL),
+m_xlxNetwork(NULL),
+m_xlxVoice(NULL),
+m_xlxRewrite(NULL),
+m_dmrNetwork1Enabled(false),
+m_dmrNetwork2Enabled(false),
+m_dmrNetwork3Enabled(false),
+m_dmrNetwork4Enabled(false),
+m_dmrNetwork5Enabled(false),
+m_xlxNetworkEnabled(false),
+m_xlxId(0U),
+m_xlxReflector(0U),
+m_xlxRoom(0U),
+m_xlxConnected(false),
+m_xlxNumber(),
+m_xlxStartup(),
+m_status()
+{
+	::memset(m_status, DMRGWS_NONE, sizeof(m_status));
+}
+
+CDMRGateway::~CDMRGateway()
+{
+}
+
+int CDMRGateway::run()
+{
+	bool ret = m_conf.read();
+	if (!ret) {
+		::LogError("Cannot read the configuration file, %s", m_conf.getFile().c_str());
+		return 1;
+	}
+
+#if !defined(_WIN32) && !defined(_WIN64)
+	bool m_daemon = m_conf.getDaemon();
+	if (m_daemon) {
+		// Create new process
+		pid_t pid = ::fork();
+		if (pid == -1) {
+			::LogError("Couldn't fork() , exiting");
+			return -1;
+		} else if (pid != 0) {
+			exit(0);
+		}
+
+		// Create new session
+		if (::setsid() == -1) {
+			::LogError("Couldn't setsid() , exiting");
+			return -1;
+		}
+
+		// Create new process
+		pid = ::fork();
+		if (pid == -1) {
+			::LogError("Couldn't fork() , exiting");
+			return -1;
+		} else if (pid != 0) {
+			exit(0);
+		}
+	}
+#endif
+
+	ret = ::LogInitialise(m_conf.getLogDisplayLevel(), m_conf.getLogFileLevel(), m_conf.getLogFilePath(), m_conf.getLogFileRoot(), m_conf.getLogFileRotate());
+	if (!ret) {
+		::LogError("Unable to initialise the logging");
+		return 1;
+	}
+
+	std::string rptAddress   = m_conf.getRptAddress();
+	unsigned short rptPort   = m_conf.getRptPort();
+	std::string localAddress = m_conf.getLocalAddress();
+	unsigned short localPort = m_conf.getLocalPort();
+	bool ruleTrace           = m_conf.getRuleTrace();
+	bool debug               = m_conf.getDebug();
+
+	m_repeater = new CMMDVMNetwork(rptAddress, rptPort, localAddress, localPort, debug);
+	ret = m_repeater->open();
+	if (!ret) {
+		::LogError("Cannot open the MMDVM repeater network");
+		delete m_repeater;
+		::LogFinalise();
+		return 1;
+	}
+
+	m_dmrNetwork1Enabled = m_conf.getDMRNetwork1Enabled();
+	if (m_dmrNetwork1Enabled) {
+		std::string address  = m_conf.getDMRNetwork1Address();
+		unsigned short port  = m_conf.getDMRNetwork1Port();
+		unsigned short local = m_conf.getDMRNetwork1Local();
+		std::string password = m_conf.getDMRNetwork1Password();
+		bool location        = m_conf.getDMRNetwork1Location();
+		bool debug           = m_conf.getDMRNetwork1Debug();
+
+		m_dmrNetwork1 = new CDMRNetwork(address, port, local, m_conf.getId(), password, "DMR1", VERSION, debug);
+		m_dmrNetwork1->enable(location);
+
+		ret = m_dmrNetwork1->open();
+		if (!ret) {
+			::LogError("Cannot open DMR Network 1");
+			delete m_dmrNetwork1;
+			m_dmrNetwork1 = NULL;
+			m_dmrNetwork1Enabled = false;
+		}
+	}
+
+	m_dmrNetwork2Enabled = m_conf.getDMRNetwork2Enabled();
+	if (m_dmrNetwork2Enabled) {
+		std::string address  = m_conf.getDMRNetwork2Address();
+		unsigned short port  = m_conf.getDMRNetwork2Port();
+		unsigned short local = m_conf.getDMRNetwork2Local();
+		std::string password = m_conf.getDMRNetwork2Password();
+		bool location        = m_conf.getDMRNetwork2Location();
+		bool debug           = m_conf.getDMRNetwork2Debug();
+
+		m_dmrNetwork2 = new CDMRNetwork(address, port, local, m_conf.getId(), password, "DMR2", VERSION, debug);
+		m_dmrNetwork2->enable(location);
+
+		ret = m_dmrNetwork2->open();
+		if (!ret) {
+			::LogError("Cannot open DMR Network 2");
+			delete m_dmrNetwork2;
+			m_dmrNetwork2 = NULL;
+			m_dmrNetwork2Enabled = false;
+		}
+	}
+
+	m_dmrNetwork3Enabled = m_conf.getDMRNetwork3Enabled();
+	if (m_dmrNetwork3Enabled) {
+		std::string address  = m_conf.getDMRNetwork3Address();
+		unsigned short port  = m_conf.getDMRNetwork3Port();
+		unsigned short local = m_conf.getDMRNetwork3Local();
+		std::string password = m_conf.getDMRNetwork3Password();
+		bool location        = m_conf.getDMRNetwork3Location();
+		bool debug           = m_conf.getDMRNetwork3Debug();
+
+		m_dmrNetwork3 = new CDMRNetwork(address, port, local, m_conf.getId(), password, "DMR3", VERSION, debug);
+		m_dmrNetwork3->enable(location);
+
+		ret = m_dmrNetwork3->open();
+		if (!ret) {
+			::LogError("Cannot open DMR Network 3");
+			delete m_dmrNetwork3;
+			m_dmrNetwork3 = NULL;
+			m_dmrNetwork3Enabled = false;
+		}
+	}
+
+	m_dmrNetwork4Enabled = m_conf.getDMRNetwork4Enabled();
+	if (m_dmrNetwork4Enabled) {
+		std::string address  = m_conf.getDMRNetwork4Address();
+		unsigned short port  = m_conf.getDMRNetwork4Port();
+		unsigned short local = m_conf.getDMRNetwork4Local();
+		std::string password = m_conf.getDMRNetwork4Password();
+		bool location        = m_conf.getDMRNetwork4Location();
+		bool debug           = m_conf.getDMRNetwork4Debug();
+
+		m_dmrNetwork4 = new CDMRNetwork(address, port, local, m_conf.getId(), password, "DMR4", VERSION, debug);
+		m_dmrNetwork4->enable(location);
+
+		ret = m_dmrNetwork4->open();
+		if (!ret) {
+			::LogError("Cannot open DMR Network 4");
+			delete m_dmrNetwork4;
+			m_dmrNetwork4 = NULL;
+			m_dmrNetwork4Enabled = false;
+		}
+	}
+
+	m_dmrNetwork5Enabled = m_conf.getDMRNetwork5Enabled();
+	if (m_dmrNetwork5Enabled) {
+		std::string address  = m_conf.getDMRNetwork5Address();
+		unsigned short port  = m_conf.getDMRNetwork5Port();
+		unsigned short local = m_conf.getDMRNetwork5Local();
+		std::string password = m_conf.getDMRNetwork5Password();
+		bool location        = m_conf.getDMRNetwork5Location();
+		bool debug           = m_conf.getDMRNetwork5Debug();
+
+		m_dmrNetwork5 = new CDMRNetwork(address, port, local, m_conf.getId(), password, "DMR5", VERSION, debug);
+		m_dmrNetwork5->enable(location);
+
+		ret = m_dmrNetwork5->open();
+		if (!ret) {
+			::LogError("Cannot open DMR Network 5");
+			delete m_dmrNetwork5;
+			m_dmrNetwork5 = NULL;
+			m_dmrNetwork5Enabled = false;
+		}
+	}
+
+	m_xlxNetworkEnabled = m_conf.getXLXNetworkEnabled();
+	if (m_xlxNetworkEnabled) {
+		std::string file      = m_conf.getXLXNetworkFile();
+		unsigned short port   = m_conf.getXLXNetworkPort();
+		std::string password  = m_conf.getXLXNetworkPassword();
+		unsigned short local  = m_conf.getXLXNetworkLocal();
+		bool debug            = m_conf.getXLXNetworkDebug();
+
+		m_xlxNetwork = new CDMRNetwork(file, port, local, m_conf.getId(), password, "XLX", VERSION, debug);
+
+		ret = m_xlxNetwork->open();
+		if (!ret) {
+			::LogError("Cannot open XLX Network");
+			delete m_xlxNetwork;
+			m_xlxNetwork = NULL;
+			m_xlxNetworkEnabled = false;
+		} else {
+			m_xlxRewrite = new CRewriteSrc(m_conf.getXLXNetworkSlot(), m_conf.getXLXNetworkTG(), m_conf.getXLXNetworkBase());
+		}
+	}
+
+	if (m_dmrNetwork1Enabled)
+		m_dmrNetwork1->enable(true);
+	if (m_dmrNetwork2Enabled)
+		m_dmrNetwork2->enable(true);
+	if (m_dmrNetwork3Enabled)
+		m_dmrNetwork3->enable(true);
+	if (m_dmrNetwork4Enabled)
+		m_dmrNetwork4->enable(true);
+	if (m_dmrNetwork5Enabled)
+		m_dmrNetwork5->enable(true);
+
+	m_xlxId        = m_conf.getId();
+	m_xlxSlot      = m_conf.getXLXNetworkSlot();
+	m_xlxTG        = m_conf.getXLXNetworkTG();
+	m_xlxBase      = m_conf.getXLXNetworkBase();
+	m_xlxRoom      = m_conf.getXLXNetworkStartup();
+	m_xlxUserControl = m_conf.getXLXNetworkUserControl();
+	m_xlxStartup   = m_conf.getXLXNetworkNumber();
+	if (m_xlxRoom != 0U)
+		m_xlxReflector = m_xlxRoom;
+
+	bool voiceEnabled = m_conf.getVoiceEnabled();
+	if (voiceEnabled) {
+		std::string language  = m_conf.getVoiceLanguage();
+		std::string directory = m_conf.getVoiceDirectory();
+
+		m_xlxVoice = new CXLXVoice(directory, language, m_conf.getCallsign());
+		ret = m_xlxVoice->open();
+		if (!ret) {
+			::LogError("Cannot open the XLX Voice");
+			delete m_xlxVoice;
+			m_xlxVoice = NULL;
+		}
+	}
+
+	unsigned int netTimeout = m_conf.getNetTimeout();
+
+	CTimer* timer[3U];
+	timer[1U] = new CTimer(1000U);
+	timer[2U] = new CTimer(1000U);
+
+	unsigned int rfSrcId[3U];
+	unsigned int rfDstId[3U];
+	rfSrcId[1U] = rfSrcId[2U] = rfDstId[1U] = rfDstId[2U] = 0U;
+
+	unsigned int dmr1SrcId[3U];
+	unsigned int dmr1DstId[3U];
+	dmr1SrcId[1U] = dmr1SrcId[2U] = dmr1DstId[1U] = dmr1DstId[2U] = 0U;
+
+	unsigned int dmr2SrcId[3U];
+	unsigned int dmr2DstId[3U];
+	dmr2SrcId[1U] = dmr2SrcId[2U] = dmr2DstId[1U] = dmr2DstId[2U] = 0U;
+
+	unsigned int dmr3SrcId[3U];
+	unsigned int dmr3DstId[3U];
+	dmr3SrcId[1U] = dmr3SrcId[2U] = dmr3DstId[1U] = dmr3DstId[2U] = 0U;
+
+	unsigned int dmr4SrcId[3U];
+	unsigned int dmr4DstId[3U];
+	dmr4SrcId[1U] = dmr4SrcId[2U] = dmr4DstId[1U] = dmr4DstId[2U] = 0U;
+
+	unsigned int dmr5SrcId[3U];
+	unsigned int dmr5DstId[3U];
+	dmr5SrcId[1U] = dmr5SrcId[2U] = dmr5DstId[1U] = dmr5DstId[2U] = 0U;
+
+	CStopWatch stopWatch;
+	stopWatch.start();
+
+	LogMessage("DMRGateway-%s is running", VERSION);
+
+	while (true) {
+		if (m_xlxNetworkEnabled && (m_xlxNetwork != NULL)) {
+			bool connected = m_xlxNetwork->isConnected();
+			if (connected && !m_xlxConnected) {
+				if (m_xlxReflector >= 4001U && m_xlxReflector <= 4026U) {
+					writeXLXLink(m_xlxId, m_xlxReflector, m_xlxNetwork);
+					char c = ('A' + (m_xlxReflector % 100U)) - 1U;
+					LogMessage("XLX, Linking to reflector XLX%s %c", m_xlxNumber.c_str(), c);
+					if (m_xlxVoice != NULL) {
+						CDMRData data;
+						m_xlxVoice->linked(data, m_conf.getCallsign(), m_xlxNumber, m_xlxReflector);
+						m_repeater->write(data);
+					}
+				} else if (m_xlxRoom >= 4001U && m_xlxRoom <= 4026U) {
+					writeXLXLink(m_xlxId, m_xlxRoom, m_xlxNetwork);
+					char c = ('A' + (m_xlxRoom % 100U)) - 1U;
+					LogMessage("XLX, Linking to reflector XLX%s %c", m_xlxNumber.c_str(), c);
+					if (m_xlxVoice != NULL) {
+						CDMRData data;
+						m_xlxVoice->linked(data, m_conf.getCallsign(), m_xlxNumber, m_xlxRoom);
+						m_repeater->write(data);
+					}
+					m_xlxReflector = m_xlxRoom;
+				} else {
+					if (m_xlxVoice != NULL) {
+						CDMRData data;
+						m_xlxVoice->linked(data, m_conf.getCallsign(), m_xlxNumber, 0U);
+						m_repeater->write(data);
+					}
+				}
+
+				m_xlxConnected = true;
+
+				if (m_xlxNumber == m_xlxStartup && m_xlxRoom == m_xlxReflector)
+					m_xlxRelink.stop();
+				else
+					m_xlxRelink.start();
+			} else if (!connected && m_xlxConnected) {
+				LogMessage("XLX, Unlinking from XLX%s due to loss of connection", m_xlxNumber.c_str());
+
+				if (m_xlxVoice != NULL) {
+					CDMRData data;
+					m_xlxVoice->unlinked(data);
+					m_repeater->write(data);
+				}
+
+				m_xlxConnected = false;
+				m_xlxRelink.stop();
+			} else if (connected && m_xlxRelink.isRunning() && m_xlxRelink.hasExpired()) {
+				m_xlxRelink.stop();
+
+				if (m_xlxNumber != m_xlxStartup) {
+					if (m_xlxStartup != "4000") {
+						m_xlxReflector = 4000U;
+						char c = ('A' + (m_xlxRoom % 100U)) - 1U;
+						LogMessage("XLX, Re-linking to startup reflector XLX%s %c due to RF inactivity timeout", m_xlxNumber.c_str(), c);
+						linkXLX(std::stoi(m_xlxStartup));
+					} else {
+						LogMessage("XLX, Unlinking from XLX%s due to RF inactivity timeout", m_xlxNumber.c_str());
+						unlinkXLX();
+					}
+				} else {
+					if (m_xlxReflector >= 4001U && m_xlxReflector <= 4026U)
+						writeXLXLink(m_xlxId, 4000U, m_xlxNetwork);
+
+					if (m_xlxRoom >= 4001U && m_xlxRoom <= 4026U) {
+						writeXLXLink(m_xlxId, m_xlxRoom, m_xlxNetwork);
+						char c = ('A' + (m_xlxRoom % 100U)) - 1U;
+						LogMessage("XLX, Re-linking to startup reflector XLX%s %c due to RF inactivity timeout", m_xlxNumber.c_str(), c);
+					} else if (m_xlxReflector >= 4001U && m_xlxReflector <= 4026U) {
+						char c = ('A' + (m_xlxReflector % 100U)) - 1U;
+						LogMessage("XLX, Unlinking from reflector XLX%s %c due to RF inactivity timeout", m_xlxNumber.c_str(), c);
+					}
+
+					m_xlxReflector = m_xlxRoom;
+					if (m_xlxVoice != NULL) {
+						CDMRData data;
+						if (m_xlxReflector < 4001U || m_xlxReflector > 4026U)
+							m_xlxVoice->linked(data, m_conf.getCallsign(), m_xlxNumber, 0U);
+						else
+							m_xlxVoice->linked(data, m_conf.getCallsign(), m_xlxNumber, m_xlxReflector);
+						m_repeater->write(data);
+					}
+				}
+			}
+		}
+
+		CDMRData data;
+
+		bool ret = m_repeater->read(data);
+		if (ret) {
+			unsigned int slotNo = data.getSlotNo();
+			unsigned int srcId = data.getSrcId();
+			unsigned int dstId = data.getDstId();
+			FLCO flco = data.getFLCO();
+
+			// Determine mode and network
+			std::string mode;
+			unsigned int network = 0U;
+			unsigned int tg = dstId;
+
+			if (dstId >= 9001U && dstId <= 9007U) {
+				// Mode A: Raw Mode
+				mode = "Raw";
+				if (dstId == 9007U) {
+					network = 0U; // XLX
+				} else {
+					network = dstId - 9000U; // DMR Network 1-5
+					tg = m_conf.getDMRNetworkTG(network); // Use configured TG for the network
+				}
+			} else if (dstId >= 1000000U && dstId <= 9999999U) {
+				// Mode B: 7-Digit Mode
+				mode = "Seven Digit";
+				unsigned int prefix = dstId / 1000000U;
+				if (prefix >= 1U && prefix <= 5U) {
+					network = prefix;
+					tg = dstId % 1000000U;
+				}
+			} else if (dstId >= 11000000U && dstId <= 15999999U) {
+				// Mode C: 8-Digit Mode
+				mode = "Eight Digit";
+				unsigned int prefix = dstId / 1000000U;
+				if (prefix >= 11U && prefix <= 15U) {
+					network = prefix - 10U;
+					tg = dstId % 1000000U;
+				}
+			}
+
+			// Voice announcement
+			if (m_xlxVoice != NULL && network > 0U && network <= 5U) {
+				std::string networkName = m_conf.getDMRNetworkName(network);
+				m_xlxVoice->announce(mode, networkName, tg);
+			} else if (m_xlxVoice != NULL && network == 0U && dstId == 9007U) {
+				m_xlxVoice->announce(mode, "XLX", tg);
+			}
+
+			if (flco == FLCO_GROUP && slotNo == m_xlxSlot && dstId == m_xlxTG) {
+				if (m_xlxReflector != m_xlxRoom || m_xlxNumber != m_xlxStartup)
+					m_xlxRelink.start();
+
+				m_xlxRewrite->process(data, false);
+				if (m_xlxNetworkEnabled) {
+					m_xlxNetwork->write(data);
+				}
+				m_status[slotNo] = DMRGWS_XLXREFLECTOR;
+				timer[slotNo]->setTimeout(m_conf.getRFTimeout());
+				timer[slotNo]->start();
+			} else if ((dstId <= (m_xlxBase + 26U) || dstId == (m_xlxBase + 1000U)) && flco == FLCO_USER_USER && slotNo == m_xlxSlot && dstId >= m_xlxBase && m_xlxUserControl) {
+				dstId += 4000U;
+				dstId -= m_xlxBase;
+
+				if (dstId != m_xlxReflector) {
+					if (dstId == 4000U) {
+						writeXLXLink(srcId, 4000U, m_xlxNetwork);
+						m_xlxReflector = 4000U;
+						char c = ('A' + (m_xlxRoom % 100U)) - 1U;
+						LogMessage("XLX, Unlinking from reflector XLX%s %c", m_xlxNumber.c_str(), c);
+					} else if (dstId != 5000U) {
+						if (m_xlxReflector != 4000U)
+							writeXLXLink(srcId, 4000U, m_xlxNetwork);
+						writeXLXLink(srcId, dstId, m_xlxNetwork);
+						m_xlxReflector = dstId;
+						char c = ('A' + (dstId % 100U)) - 1U;
+						LogMessage("XLX, Linking to reflector XLX%s %c", m_xlxNumber.c_str(), c);
+					}
+
+					if (m_xlxVoice != NULL) {
+						CDMRData voiceData;
+						if (dstId < 4001U || dstId > 4026U)
+							m_xlxVoice->linked(voiceData, m_conf.getCallsign(), m_xlxNumber, 0U);
+						else
+							m_xlxVoice->linked(voiceData, m_conf.getCallsign(), m_xlxNumber, dstId);
+						m_repeater->write(voiceData);
+					}
+				}
+			} else {
+				if (m_dmrNetwork1Enabled && m_dmrNetwork1 != NULL) {
+					if (m_status[slotNo] == DMRGWS_NONE || m_status[slotNo] == DMRGWS_DMRNETWORK1) {
+						if (m_dmrNetwork1->process(data, slotNo, srcId, dstId, flco)) {
+							timer[slotNo]->setTimeout(m_conf.getRFTimeout());
+							timer[slotNo]->start();
+							m_status[slotNo] = DMRGWS_DMRNETWORK1;
+
+							if (srcId != dmr1SrcId[slotNo] || dstId != dmr1DstId[slotNo]) {
+								if (ruleTrace)
+									LogMessage("DMR Slot %u: RF -> DMR Network 1: %u -> %u", slotNo, srcId, dstId);
+								dmr1SrcId[slotNo] = srcId;
+								dmr1DstId[slotNo] = dstId;
+							}
+						}
+					}
+				}
+
+				if (m_dmrNetwork2Enabled && m_dmrNetwork2 != NULL) {
+					if (m_status[slotNo] == DMRGWS_NONE || m_status[slotNo] == DMRGWS_DMRNETWORK2) {
+						if (m_dmrNetwork2->process(data, slotNo, srcId, dstId, flco)) {
+							timer[slotNo]->setTimeout(m_conf.getRFTimeout());
+							timer[slotNo]->start();
+							m_status[slotNo] = DMRGWS_DMRNETWORK2;
+
+							if (srcId != dmr2SrcId[slotNo] || dstId != dmr2DstId[slotNo]) {
+								if (ruleTrace)
+									LogMessage("DMR Slot %u: RF -> DMR Network 2: %u -> %u", slotNo, srcId, dstId);
+								dmr2SrcId[slotNo] = srcId;
+								dmr2DstId[slotNo] = dstId;
+							}
+						}
+					}
+				}
+
+				if (m_dmrNetwork3Enabled && m_dmrNetwork3 != NULL) {
+					if (m_status[slotNo] == DMRGWS_NONE || m_status[slotNo] == DMRGWS_DMRNETWORK3) {
+						if (m_dmrNetwork3->process(data, slotNo, srcId, dstId, flco)) {
+							timer[slotNo]->setTimeout(m_conf.getRFTimeout());
+							timer[slotNo]->start();
+							m_status[slotNo] = DMRGWS_DMRNETWORK3;
+
+							if (srcId != dmr3SrcId[slotNo] || dstId != dmr3DstId[slotNo]) {
+								if (ruleTrace)
+									LogMessage("DMR Slot %u: RF -> DMR Network 3: %u -> %u", slotNo, srcId, dstId);
+								dmr3SrcId[slotNo] = srcId;
+								dmr3DstId[slotNo] = dstId;
+							}
+						}
+					}
+				}
+
+				if (m_dmrNetwork4Enabled && m_dmrNetwork4 != NULL) {
+					if (m_status[slotNo] == DMRGWS_NONE || m_status[slotNo] == DMRGWS_DMRNETWORK4) {
+						if (m_dmrNetwork4->process(data, slotNo, srcId, dstId, flco)) {
+							timer[slotNo]->setTimeout(m_conf.getRFTimeout());
+							timer[slotNo]->start();
+							m_status[slotNo] = DMRGWS_DMRNETWORK4;
+
+							if (srcId != dmr4SrcId[slotNo] || dstId != dmr4DstId[slotNo]) {
+								if (ruleTrace)
+									LogMessage("DMR Slot %u: RF -> DMR Network 4: %u -> %u", slotNo, srcId, dstId);
+								dmr4SrcId[slotNo] = srcId;
+								dmr4DstId[slotNo] = dstId;
+							}
+						}
+					}
+				}
+
+				if (m_dmrNetwork5Enabled && m_dmrNetwork5 != NULL) {
+					if (m_status[slotNo] == DMRGWS_NONE || m_status[slotNo] == DMRGWS_DMRNETWORK5) {
+						if (m_dmrNetwork5->process(data, slotNo, srcId, dstId, flco)) {
+							timer[slotNo]->setTimeout(m_conf.getRFTimeout());
+							timer[slotNo]->start();
+							m_status[slotNo] = DMRGWS_DMRNETWORK5;
+
+							if (srcId != dmr5SrcId[slotNo] || dstId != dmr5DstId[slotNo]) {
+								if (ruleTrace)
+									LogMessage("DMR Slot %u: RF -> DMR Network 5: %u -> %u", slotNo, srcId, dstId);
+								dmr5SrcId[slotNo] = srcId;
+								dmr5DstId[slotNo] = dstId;
+							}
+						}
+					}
+				}
+			}
+		}
+
+		if (m_dmrNetwork1Enabled && m_dmrNetwork1 != NULL) {
+			while (m_dmrNetwork1->read(data)) {
+				unsigned int slotNo = data.getSlotNo();
+				unsigned int srcId = data.getSrcId();
+				unsigned int dstId = data.getDstId();
+
+				if (m_status[slotNo] == DMRGWS_NONE || m_status[slotNo] == DMRGWS_DMRNETWORK1) {
+					m_repeater->write(data);
+					timer[slotNo]->setTimeout(netTimeout);
+					timer[slotNo]->start();
+					m_status[slotNo] = DMRGWS_DMRNETWORK1;
+
+					if (srcId != dmr1SrcId[slotNo] || dstId != dmr1DstId[slotNo]) {
+						if (ruleTrace)
+							LogMessage("DMR Slot %u: DMR Network 1 -> RF: %u -> %u", slotNo, srcId, dstId);
+						dmr1SrcId[slotNo] = srcId;
+						dmr1DstId[slotNo] = dstId;
+					}
+				}
+			}
+		}
+
+		if (m_dmrNetwork2Enabled && m_dmrNetwork2 != NULL) {
+			while (m_dmrNetwork2->read(data)) {
+				unsigned int slotNo = data.getSlotNo();
+				unsigned int srcId = data.getSrcId();
+				unsigned int dstId = data.getDstId();
+
+				if (m_status[slotNo] == DMRGWS_NONE || m_status[slotNo] == DMRGWS_DMRNETWORK2) {
+					m_repeater->write(data);
+					timer[slotNo]->setTimeout(netTimeout);
+					timer[slotNo]->start();
+					m_status[slotNo] = DMRGWS_DMRNETWORK2;
+
+					if (srcId != dmr2SrcId[slotNo] || dstId != dmr2DstId[slotNo]) {
+						if (ruleTrace)
+							LogMessage("DMR Slot %u: DMR Network 2 -> RF: %u -> %u", slotNo, srcId, dstId);
+						dmr2SrcId[slotNo] = srcId;
+						dmr2DstId[slotNo] = dstId;
+					}
+				}
+			}
+		}
+
+		if (m_dmrNetwork3Enabled && m_dmrNetwork3 != NULL) {
+			while (m_dmrNetwork3->read(data)) {
+				unsigned int slotNo = data.getSlotNo();
+				unsigned int srcId = data.getSrcId();
+				unsigned int dstId = data.getDstId();
+
+				if (m_status[slotNo] == DMRGWS_NONE || m_status[slotNo] == DMRGWS_DMRNETWORK3) {
+					m_repeater->write(data);
+					timer[slotNo]->setTimeout(netTimeout);
+					timer[slotNo]->start();
+					m_status[slotNo] = DMRGWS_DMRNETWORK3;
+
+					if (srcId != dmr3SrcId[slotNo] || dstId != dmr3DstId[slotNo]) {
+						if (ruleTrace)
+							LogMessage("DMR Slot %u: DMR Network 3 -> RF: %u -> %u", slotNo, srcId, dstId);
+						dmr3SrcId[slotNo] = srcId;
+						dmr3DstId[slotNo] = dstId;
+					}
+				}
+			}
+		}
+
+		if (m_dmrNetwork4Enabled && m_dmrNetwork4 != NULL) {
+			while (m_dmrNetwork4->read(data)) {
+				unsigned int slotNo = data.getSlotNo();
+				unsigned int srcId = data.getSrcId();
+				unsigned int dstId = data.getDstId();
+
+				if (m_status[slotNo] == DMRGWS_NONE || m_status[slotNo] == DMRGWS_DMRNETWORK4) {
+					m_repeater->write(data);
+					timer[slotNo]->setTimeout(netTimeout);
+					timer[slotNo]->start();
+					m_status[slotNo] = DMRGWS_DMRNETWORK4;
+
+					if (srcId != dmr4SrcId[slotNo] || dstId != dmr4DstId[slotNo]) {
+						if (ruleTrace)
+							LogMessage("DMR Slot %u: DMR Network 4 -> RF: %u -> %u", slotNo, srcId, dstId);
+						dmr4SrcId[slotNo] = srcId;
+						dmr4DstId[slotNo] = dstId;
+					}
+				}
+			}
+		}
+
+		if (m_dmrNetwork5Enabled && m_dmrNetwork5 != NULL) {
+			while (m_dmrNetwork5->read(data)) {
+				unsigned int slotNo = data.getSlotNo();
+				unsigned int srcId = data.getSrcId();
+				unsigned int dstId = data.getDstId();
+
+				if (m_status[slotNo] == DMRGWS_NONE || m_status[slotNo] == DMRGWS_DMRNETWORK5) {
+					m_repeater->write(data);
+					timer[slotNo]->setTimeout(netTimeout);
+					timer[slotNo]->start();
+					m_status[slotNo] = DMRGWS_DMRNETWORK5;
+
+					if (srcId != dmr5SrcId[slotNo] || dstId != dmr5DstId[slotNo]) {
+						if (ruleTrace)
+							LogMessage("DMR Slot %u: DMR Network 5 -> RF: %u -> %u", slotNo, srcId, dstId);
+						dmr5SrcId[slotNo] = srcId;
+						dmr5DstId[slotNo] = dstId;
+					}
+				}
+			}
+		}
+
+		if (m_xlxNetworkEnabled && m_xlxNetwork != NULL) {
+			while (m_xlxNetwork->read(data)) {
+				unsigned int slotNo = data.getSlotNo();
+				unsigned int srcId = data.getSrcId();
+				unsigned int dstId = data.getDstId();
+
+				if (m_status[slotNo] == DMRGWS_NONE || m_status[slotNo] == DMRGWS_XLXREFLECTOR) {
+					m_xlxRewrite->process(data, true);
+					m_repeater->write(data);
+					timer[slotNo]->setTimeout(netTimeout);
+					timer[slotNo]->start();
+					m_status[slotNo] = DMRGWS_XLXREFLECTOR;
+
+					if (ruleTrace)
+						LogMessage("DMR Slot %u: XLX -> RF: %u -> %u", slotNo, srcId, dstId);
+				}
+			}
+		}
+
+		for (unsigned int i = 1U; i <= 2U; i++) {
+			if (timer[i]->isRunning() && timer[i]->hasExpired()) {
+				timer[i]->stop();
+				m_status[i] = DMRGWS_NONE;
+			}
+		}
+
+		unsigned int ms = stopWatch.elapsed();
+		if (ms > 10U) {
+			stopWatch.start();
+
+			if (m_dmrNetwork1Enabled && m_dmrNetwork1 != NULL)
+				m_dmrNetwork1->clock(ms);
+			if (m_dmrNetwork2Enabled && m_dmrNetwork2 != NULL)
+				m_dmrNetwork2->clock(ms);
+			if (m_dmrNetwork3Enabled && m_dmrNetwork3 != NULL)
+				m_dmrNetwork3->clock(ms);
+			if (m_dmrNetwork4Enabled && m_dmrNetwork4 != NULL)
+				m_dmrNetwork4->clock(ms);
+			if (m_dmrNetwork5Enabled && m_dmrNetwork5 != NULL)
+				m_dmrNetwork5->clock(ms);
+			if (m_xlxNetworkEnabled && m_xlxNetwork != NULL)
+				m_xlxNetwork->clock(ms);
+
+			for (unsigned int i = 1U; i <= 2U; i++)
+				timer[i]->clock(ms);
+
+			m_xlxRelink.clock(ms);
+		}
+
+		if (m_xlxVoice != NULL)
+			m_xlxVoice->clock(ms);
+
+		CThread::sleep(10U);
+	}
+
+	return 0;
+}
+
+bool CDMRGateway::linkXLX(unsigned int number)
+{
+	m_xlxNumber = std::to_string(number);
+
+	if (m_xlxVoice != NULL) {
+		CDMRData data;
+		m_xlxVoice->linked(data, m_conf.getCallsign(), m_xlxNumber, 0U);
+		m_repeater->write(data);
+	}
+
+	if (m_xlxReflector != 4000U)
+		writeXLXLink(m_xlxId, 4000U, m_xlxNetwork);
+
+	return true;
+}
+
+void CDMRGateway::unlinkXLX()
+{
+	if (m_xlxVoice != NULL) {
+		CDMRData data;
+		m_xlxVoice->unlinked(data);
+		m_repeater->write(data);
+	}
+
+	if (m_xlxReflector != 4000U)
+		writeXLXLink(m_xlxId, 4000U, m_xlxNetwork);
+
+	m_xlxReflector = 4000U;
+}
+
+void CDMRGateway::writeXLXLink(unsigned int sourceId, unsigned int destId, CDMRNetwork* network)
+{
+	CDMRData data;
+
+	data.setSrcId(sourceId);
+	data.setDstId(destId);
+	data.setFLCO(FLCO_USER_USER);
+	data.setSlotNo(m_xlxSlot);
+	data.setDataType(DT_VOICE_LC_HEADER);
+
+	unsigned char buffer[DMR_FRAME_LENGTH_BYTES];
+	data.getData(buffer);
+	network->write(data);
+
+	data.setDataType(DT_VOICE);
+	for (unsigned int i = 0U; i < 5U; i++) {
+		data.getData(buffer);
+		network->write(data);
+	}
+
+	data.setDataType(DT_TERMINATOR_WITH_LC);
+	data.getData(buffer);
+	network->write(data);
+}

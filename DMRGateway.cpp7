@@ -4,6 +4,7 @@
 #include "Thread.h"
 #include "Timer.h"
 #include "Log.h"
+#include "GitVersion.h"
 #include "DMRLC.h"
 #include "Sync.h"
 #include "RewriteType.h"
@@ -45,21 +46,20 @@ const unsigned char COLOR_CODE = 3U;
 unsigned int rdstId = 0;
 unsigned short selnet = 4;
 unsigned int storedtg = 0;
-// Comment out unused variables to suppress warnings; restore if used in original logic
-// static bool net1ok = false;
-// static bool net2ok = false;
-// static bool net3ok = false;
-// static bool net4ok = false;
-// static bool net5ok = false;
-// static bool net6ok = false;
-// static bool rf1ok = false;
-// static bool rf2ok = false;
-// static bool rf3ok = false;
-// static bool rf4ok = false;
-// static bool rf5ok = false;
-// static bool rf6ok = false;
-// static bool ok2tx = false;
-// static int locknet = 4;
+static bool net1ok = false;
+static bool net2ok = false;
+static bool net3ok = false;
+static bool net4ok = false;
+static bool net5ok = false;
+static bool net6ok = false;
+static bool rf1ok = false;
+static bool rf2ok = false;
+static bool rf3ok = false;
+static bool rf4ok = false;
+static bool rf5ok = false;
+static bool rf6ok = false;
+static bool ok2tx = false;
+static int locknet = 4;
 unsigned short int GWMode = 8;
 
 static bool m_killed = false;
@@ -78,13 +78,12 @@ const char* HEADER2 = "intended for amateur and educational use.";
 const char* HEADER3 = "Created by Jonathan Naylor, G4KLX and others";
 const char* HEADER4 = "Modified by Phil Thompson VE3RD";
 
-// Placeholder implementations; replace with original logic if provided
-void ClearRFNets() { /* TODO: Restore original implementation */ }
-void ClearNetworks() { /* TODO: Restore original implementation */ }
-void SetDMR() { /* TODO: Restore original implementation */ }
-int Reload() { return 0; /* TODO: Restore original implementation */ }
-void SetUserMMDVM() { /* TODO: Restore original implementation */ }
-void SetUserRoot() { /* TODO: Restore original implementation */ }
+void ClearRFNets() { /* TODO: Implement or remove if unused */ }
+void ClearNetworks() { /* TODO: Implement or remove if unused */ }
+void SetDMR() { /* TODO: Implement or remove if unused */ }
+int Reload() { return 0; /* TODO: Implement or remove if unused */ }
+void SetUserMMDVM() { /* TODO: Implement or remove if unused */ }
+void SetUserRoot() { /* TODO: Implement or remove if unused */ }
 
 int main(int argc, char** argv)
 {
@@ -118,7 +117,7 @@ int main(int argc, char** argv)
     ::LogInfo(HEADER2);
     ::LogInfo(HEADER3);
     ::LogInfo(HEADER4);
-    ::LogInfo("Version: %s", VERSION); // Removed GITVERSION due to undeclared error
+    ::LogInfo("Version: %s, Git: %s", VERSION, GITVERSION);
 
     CDMRGateway gateway(iniFile);
     int status = gateway.run();
@@ -832,32 +831,32 @@ int CDMRGateway::run()
     ::LogInfo("DMRGateway is exiting on receipt of signal %d", m_signal);
 
     if (m_dmrNetwork1) {
-        m_dmrNetwork1->close(true);
+        m_dmrNetwork1->close();
         delete m_dmrNetwork1;
         m_dmrNetwork1 = NULL;
     }
     if (m_dmrNetwork2) {
-        m_dmrNetwork2->close(true);
+        m_dmrNetwork2->close();
         delete m_dmrNetwork2;
         m_dmrNetwork2 = NULL;
     }
     if (m_dmrNetwork3) {
-        m_dmrNetwork3->close(true);
+        m_dmrNetwork3->close();
         delete m_dmrNetwork3;
         m_dmrNetwork3 = NULL;
     }
     if (m_dmrNetwork4) {
-        m_dmrNetwork4->close(true);
+        m_dmrNetwork4->close();
         delete m_dmrNetwork4;
         m_dmrNetwork4 = NULL;
     }
     if (m_dmrNetwork5) {
-        m_dmrNetwork5->close(true);
+        m_dmrNetwork5->close();
         delete m_dmrNetwork5;
         m_dmrNetwork5 = NULL;
     }
     if (m_xlxNetwork) {
-        m_xlxNetwork->close(true);
+        m_xlxNetwork->close();
         delete m_xlxNetwork;
         m_xlxNetwork = NULL;
     }

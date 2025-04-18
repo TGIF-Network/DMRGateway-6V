@@ -1,23 +1,20 @@
 #include "XLXVoice.h"
 #include "DMRDefines.h"
-#include "DMRLC.h"
 #include "Log.h"
 
 #include <cstdio>
 #include <cassert>
 #include <cstring>
-#include <vector>
+#include <cstdlib>
 
 const unsigned int WAV_DATA_LENGTH = 320U;
 
 const unsigned int DMR_FRAME_PER = 6U;
 
-CXLXVoice::CXLXVoice(const std::string& directory, const std::string& language, unsigned int id, unsigned int slot, unsigned int tg) :
+CXLXVoice::CXLXVoice(const std::string& directory, const std::string& language, const std::string& callsign) :
 m_directory(directory),
 m_language(language),
-m_id(id),
-m_slot(slot),
-m_tg(tg),
+m_callsign(callsign),
 m_dmr(),
 m_embedded(),
 m_timer(1000U, 0U, 500U),
@@ -25,6 +22,7 @@ m_wavData(NULL),
 m_wavLength(0U),
 m_pos(0U),
 m_seqNo(0U),
+m_slot(2U),
 m_dstId(0U),
 m_sent(false)
 {
@@ -41,13 +39,12 @@ bool CXLXVoice::open()
 {
     m_dmr.setFLCO(FLCO_USER_USER);
     m_dmr.setSlotNo(m_slot);
-    m_dmr.setSrcId(m_id);
+    m_dmr.setSrcId(9999U); // Dummy ID for voice announcements
 
-    CDMRLC lc;
-    lc.setFLCO(FLCO_USER_USER);
-    lc.setSrcId(m_id);
-    lc.setDstId(0U); // Will be set later in linked/unlinked/announce
-    m_embedded.setLC(lc);
+    m_embedded.setLC(*m_dmr.getLC());
+    m_embedded.setSrcId(9999U);
+    m_embedded.setDstId(0U);
+
     return true;
 }
 
@@ -112,11 +109,7 @@ bool CXLXVoice::linked(CDMRData& data, const std::string& callsign, unsigned int
     m_sent     = false;
 
     m_dmr.setDstId(reflector);
-    CDMRLC lc;
-    lc.setFLCO(FLCO_USER_USER);
-    lc.setSrcId(m_id);
-    lc.setDstId(reflector);
-    m_embedded.setLC(lc);
+    m_embedded.setDstId(reflector);
 
     m_timer.start();
 
@@ -180,11 +173,7 @@ bool CXLXVoice::unlinked(CDMRData& data)
     m_sent     = false;
 
     m_dmr.setDstId(0U);
-    CDMRLC lc;
-    lc.setFLCO(FLCO_USER_USER);
-    lc.setSrcId(m_id);
-    lc.setDstId(0U);
-    m_embedded.setLC(lc);
+    m_embedded.setDstId(0U);
 
     m_timer.start();
 
@@ -194,6 +183,9 @@ bool CXLXVoice::unlinked(CDMRData& data)
 
 void CXLXVoice::announce(const std::string& mode, const std::string& network, unsigned int tg)
 {
+    if (m_wavData != NULL)
+        return;
+
     std::string modeFile;
     if (mode == "Raw")
         modeFile = "raw";
@@ -226,11 +218,6 @@ void CXLXVoice::announce(const std::string& mode, const std::string& network, un
     filenames.push_back(modeFile);
     filenames.push_back(networkFile);
     filenames.push_back(std::to_string(tg));
-
-    if (m_wavData != NULL) {
-        delete[] m_wavData;
-        m_wavData = NULL;
-    }
 
     m_wavLength = 0U;
     std::vector<unsigned char> tempWavData;
@@ -296,11 +283,7 @@ void CXLXVoice::announce(const std::string& mode, const std::string& network, un
     m_sent     = false;
 
     m_dmr.setDstId(tg);
-    CDMRLC lc;
-    lc.setFLCO(FLCO_USER_USER);
-    lc.setSrcId(m_id);
-    lc.setDstId(tg);
-    m_embedded.setLC(lc);
+    m_embedded.setDstId(tg);
 
     m_timer.start();
 }
@@ -346,7 +329,7 @@ void CXLXVoice::addData(unsigned char dataType)
             m_dmr.setSeqNo(m_seqNo);
             m_dmr.getData(buffer);
             unsigned char lc[9U];
-            m_embedded.getData(lc, 0U);
+            m_embedded.getData(lc);
             for (unsigned int i = 0U; i < 9U; i++)
                 buffer[i + 12U] = lc[i];
             m_seqNo++;
@@ -355,8 +338,8 @@ void CXLXVoice::addData(unsigned char dataType)
 
     case DT_VOICE: {
             if ((m_pos % DMR_FRAME_PER) == 0U) {
-                unsigned char lc[7U];
-                m_embedded.getData(lc, 1U);
+                unsigned char lc[9U];
+                m_embedded.getData(lc);
                 m_dmr.setDataType(DT_VOICE_SYNC);
                 m_dmr.setSeqNo(m_seqNo);
                 m_dmr.getData(buffer);
@@ -386,7 +369,7 @@ void CXLXVoice::addData(unsigned char dataType)
             m_dmr.setSeqNo(m_seqNo);
             m_dmr.getData(buffer);
             unsigned char lc[9U];
-            m_embedded.getData(lc, 0U);
+            m_embedded.getData(lc);
             for (unsigned int i = 0U; i < 9U; i++)
                 buffer[i + 12U] = lc[i];
             m_seqNo = 0U;

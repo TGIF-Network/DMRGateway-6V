@@ -1,0 +1,388 @@
+#include "XLXVoice.h"
+#include "DMRDefines.h"
+#include "Log.h"
+
+#include <cstdio>
+#include <cassert>
+#include <cstring>
+#include <cstdlib>
+
+const unsigned int WAV_DATA_LENGTH = 320U;
+
+const unsigned int DMR_FRAME_PER = 6U;
+
+CXLXVoice::CXLXVoice(const std::string& directory, const std::string& language, const std::string& callsign) :
+m_directory(directory),
+m_language(language),
+m_callsign(callsign),
+m_dmr(),
+m_embedded(),
+m_timer(1000U, 0U, 500U),
+m_wavData(NULL),
+m_wavLength(0U),
+m_pos(0U),
+m_seqNo(0U),
+m_slot(2U),
+m_dstId(0U),
+m_sent(false)
+{
+	assert(!directory.empty());
+	assert(!language.empty());
+}
+
+CXLXVoice::~CXLXVoice()
+{
+	delete[] m_wavData;
+}
+
+bool CXLXVoice::open()
+{
+	m_dmr.setFLCO(FLCO_USER_USER);
+	m_dmr.setSlotNo(m_slot);
+	m_dmr.setSrcId(9999U); // Dummy ID for voice announcements
+
+	m_embedded.setLC(*m_dmr.getLC());
+	m_embedded.setSrcId(9999U);
+	m_embedded.setDstId(0U);
+
+	return true;
+}
+
+bool CXLXVoice::linked(CDMRData& data, const std::string& callsign, unsigned int number, unsigned int reflector)
+{
+	if (m_wavData != NULL)
+		return false;
+
+	char filename[100U];
+	if (reflector >= 4001U && reflector <= 4026U) {
+		char c = ('A' + (reflector % 100U)) - 1U;
+		::sprintf(filename, "%s/%s_XLX%u_%c.wav", m_directory.c_str(), m_language.c_str(), number, c);
+	} else {
+		::sprintf(filename, "%s/%s_XLX%u.wav", m_directory.c_str(), m_language.c_str(), number);
+	}
+
+	FILE* fp = ::fopen(filename, "rb");
+	if (fp == NULL) {
+		LogWarning("Cannot open %s, using unlinked", filename);
+		return unlinked(data);
+	}
+
+	unsigned char buffer[WAV_DATA_LENGTH];
+
+	::fseek(fp, 44, SEEK_SET);
+
+	m_wavLength = 0U;
+	while (::fread(buffer, 1U, WAV_DATA_LENGTH, fp) == WAV_DATA_LENGTH)
+		m_wavLength++;
+
+	::fclose(fp);
+
+	m_wavData = new unsigned char[m_wavLength * WAV_DATA_LENGTH];
+	::memset(m_wavData, 0x00U, m_wavLength * WAV_DATA_LENGTH);
+
+	fp = ::fopen(filename, "rb");
+	if (fp == NULL) {
+		LogWarning("Cannot open %s, using unlinked", filename);
+		delete[] m_wavData;
+		m_wavData = NULL;
+		return unlinked(data);
+	}
+
+	::fseek(fp, 44, SEEK_SET);
+
+	for (unsigned int i = 0U; i < m_wavLength; i++) {
+		unsigned char* p = m_wavData + (i * WAV_DATA_LENGTH);
+		if (::fread(p, 1U, WAV_DATA_LENGTH, fp) != WAV_DATA_LENGTH) {
+			LogWarning("Cannot read %s, using unlinked", filename);
+			::fclose(fp);
+			delete[] m_wavData;
+			m_wavData = NULL;
+			return unlinked(data);
+		}
+	}
+
+	::fclose(fp);
+
+	m_pos      = 0U;
+	m_seqNo    = 0U;
+	m_dstId    = reflector;
+	m_sent     = false;
+
+	m_dmr.setDstId(reflector);
+	m_embedded.setDstId(reflector);
+
+	m_timer.start();
+
+	data = m_dmr; // Initialize data with current DMR settings
+	return true;
+}
+
+bool CXLXVoice::unlinked(CDMRData& data)
+{
+	if (m_wavData != NULL)
+		return false;
+
+	char filename[100U];
+	::sprintf(filename, "%s/%s_unlinked.wav", m_directory.c_str(), m_language.c_str());
+
+	FILE* fp = ::fopen(filename, "rb");
+	if (fp == NULL) {
+		LogWarning("Cannot open %s", filename);
+		return false;
+	}
+
+	unsigned char buffer[WAV_DATA_LENGTH];
+
+	::fseek(fp, 44, SEEK_SET);
+
+	m_wavLength = 0U;
+	while (::fread(buffer, 1U, WAV_DATA_LENGTH, fp) == WAV_DATA_LENGTH)
+		m_wavLength++;
+
+	::fclose(fp);
+
+	m_wavData = new unsigned char[m_wavLength * WAV_DATA_LENGTH];
+	::memset(m_wavData, 0x00U, m_wavLength * WAV_DATA_LENGTH);
+
+	fp = ::fopen(filename, "rb");
+	if (fp == NULL) {
+		LogWarning("Cannot open %s", filename);
+		delete[] m_wavData;
+		m_wavData = NULL;
+		return false;
+	}
+
+	::fseek(fp, 44, SEEK_SET);
+
+	for (unsigned int i = 0U; i < m_wavLength; i++) {
+		unsigned char* p = m_wavData + (i * WAV_DATA_LENGTH);
+		if (::fread(p, 1U, WAV_DATA_LENGTH, fp) != WAV_DATA_LENGTH) {
+			LogWarning("Cannot read %s", filename);
+			::fclose(fp);
+			delete[] m_wavData;
+			m_wavData = NULL;
+			return false;
+		}
+	}
+
+	::fclose(fp);
+
+	m_pos      = 0U;
+	m_seqNo    = 0U;
+	m_dstId    = 0U;
+	m_sent     = false;
+
+	m_dmr.setDstId(0U);
+	m_embedded.setDstId(0U);
+
+	m_timer.start();
+
+	data = m_dmr; // Initialize data with current DMR settings
+	return true;
+}
+
+void CXLXVoice::announce(const std::string& mode, const std::string& network, unsigned int tg)
+{
+	if (m_wavData != NULL)
+		return;
+
+	// Map mode and network to file names
+	std::string modeFile;
+	if (mode == "Raw")
+		modeFile = "raw";
+	else if (mode == "Seven Digit")
+		modeFile = "seven_digit";
+	else if (mode == "Eight Digit")
+		modeFile = "eight_digit";
+	else {
+		LogWarning("Unknown mode: %s", mode.c_str());
+		return;
+	}
+
+	std::string networkFile;
+	if (network == "XLX")
+		networkFile = "xlx";
+	else if (network.find("DMR Network ") == 0 && network.length() > 11) {
+		char networkNum = network[11]; // e.g "1" from "DMR Network 1"
+		if (networkNum >= '1' && networkNum <= '5')
+			networkFile = "dmr_network_" + std::string(1, networkNum);
+		else {
+			LogWarning("Invalid network: %s", network.c_str());
+			return;
+		}
+	} else {
+		LogWarning("Invalid network: %s", network.c_str());
+		return;
+	}
+
+	// Load voice files: mode, network, and TG
+	std::vector<std::string> filenames;
+	filenames.push_back(modeFile);
+	filenames.push_back(networkFile);
+	filenames.push_back(std::to_string(tg));
+
+	m_wavLength = 0U;
+	std::vector<unsigned char> tempWavData;
+
+	for (const auto& fname : filenames) {
+		char filename[100U];
+		::sprintf(filename, "%s/%s_%s.wav", m_directory.c_str(), m_language.c_str(), fname.c_str());
+
+		FILE* fp = ::fopen(filename, "rb");
+		if (fp == NULL) {
+			LogWarning("Cannot open %s", filename);
+			continue;
+		}
+
+		unsigned char buffer[WAV_DATA_LENGTH];
+		::fseek(fp, 44, SEEK_SET);
+
+		unsigned int length = 0U;
+		while (::fread(buffer, 1U, WAV_DATA_LENGTH, fp) == WAV_DATA_LENGTH)
+			length++;
+
+		::fclose(fp);
+
+		fp = ::fopen(filename, "rb");
+		if (fp == NULL) {
+			LogWarning("Cannot open %s", filename);
+			continue;
+		}
+
+		::fseek(fp, 44, SEEK_SET);
+
+		for (unsigned int i = 0U; i < length; i++) {
+			if (::fread(buffer, 1U, WAV_DATA_LENGTH, fp) != WAV_DATA_LENGTH) {
+				LogWarning("Cannot read %s", filename);
+				::fclose(fp);
+				continue;
+			}
+			for (unsigned int j = 0U; j < WAV_DATA_LENGTH; j++)
+				tempWavData.push_back(buffer[j]);
+			m_wavLength++;
+		}
+
+		::fclose(fp);
+	}
+
+	if (m_wavLength == 0U) {
+		LogWarning("No voice data loaded for announcement");
+		return;
+	}
+
+	m_wavData = new unsigned char[m_wavLength * WAV_DATA_LENGTH];
+	::memset(m_wavData, 0x00U, m_wavLength * WAV_DATA_LENGTH);
+
+	for (unsigned int i = 0U; i < m_wavLength; i++) {
+		unsigned char* p = m_wavData + (i * WAV_DATA_LENGTH);
+		for (unsigned int j = 0U; j < WAV_DATA_LENGTH; j++)
+			p[j] = tempWavData[i * WAV_DATA_LENGTH + j];
+	}
+
+	m_pos      = 0U;
+	m_seqNo    = 0U;
+	m_dstId    = tg;
+	m_sent     = false;
+
+	m_dmr.setDstId(tg);
+	m_embedded.setDstId(tg);
+
+	m_timer.start();
+}
+
+void CXLXVoice::clock(unsigned int ms)
+{
+	if (m_wavData == NULL)
+		return;
+
+	m_timer.clock(ms);
+
+	if (m_timer.isRunning() && m_timer.hasExpired()) {
+		if (!m_sent) {
+			addData(DT_VOICE_LC_HEADER);
+			for (unsigned int i = 0U; i < 5U; i++)
+				addData(DT_VOICE);
+			m_sent = true;
+		} else {
+			if (m_pos >= m_wavLength) {
+				addData(DT_TERMINATOR_WITH_LC);
+				delete[] m_wavData;
+				m_wavData = NULL;
+				m_wavLength = 0U;
+				m_pos = 0U;
+				m_seqNo = 0U;
+				m_timer.stop();
+			} else {
+				addData(DT_VOICE);
+			}
+		}
+
+		m_timer.start();
+	}
+}
+
+void CXLXVoice::addData(unsigned char dataType)
+{
+	unsigned char buffer[DMR_FRAME_LENGTH_BYTES];
+
+	switch (dataType) {
+	case DT_VOICE_LC_HEADER: {
+			m_dmr.setDataType(DT_VOICE_LC_HEADER);
+			m_dmr.setSeqNo(m_seqNo);
+			m_dmr.getData(buffer);
+			unsigned char lc[9U];
+			m_embedded.getData(lc);
+			for (unsigned int i = 0U; i < 9U; i++)
+				buffer[i + 12U] = lc[i];
+			m_seqNo++;
+		}
+		break;
+
+	case DT_VOICE: {
+			if ((m_pos % DMR_FRAME_PER) == 0U) {
+				unsigned char lc[9U];
+				m_embedded.getData(lc);
+				m_dmr.setDataType(DT_VOICE_SYNC);
+				m_dmr.setSeqNo(m_seqNo);
+				m_dmr.getData(buffer);
+				for (unsigned int i = 0U; i < 7U; i++)
+					buffer[i + 13U] = lc[i];
+			} else {
+				m_dmr.setDataType(DT_VOICE);
+				m_dmr.setSeqNo(m_seqNo);
+				m_dmr.getData(buffer);
+			}
+
+			if (m_pos < m_wavLength) {
+				unsigned char* p = m_wavData + (m_pos * WAV_DATA_LENGTH);
+				for (unsigned int i = 0U; i < 3U; i++) {
+					::memcpy(buffer + 6U + (i * 7U), p, 7U);
+					p += WAV_DATA_LENGTH / 3U;
+				}
+				m_pos++;
+			}
+
+			m_seqNo++;
+		}
+		break;
+
+	case DT_TERMINATOR_WITH_LC: {
+			m_dmr.setDataType(DT_TERMINATOR_WITH_LC);
+			m_dmr.setSeqNo(m_seqNo);
+			m_dmr.getData(buffer);
+			unsigned char lc[9U];
+			m_embedded.getData(lc);
+			for (unsigned int i = 0U; i < 9U; i++)
+				buffer[i + 12U] = lc[i];
+			m_seqNo = 0U;
+		}
+		break;
+
+	default:
+		return;
+	}
+
+	// In a real implementation, buffer would be sent to the DMR network
+	// For now, assume it's handled by the caller (DMRGateway)
+	LogDebug("Voice frame sent, type: %u, seq: %u, pos: %u/%u", dataType, m_seqNo, m_pos, m_wavLength);
+}

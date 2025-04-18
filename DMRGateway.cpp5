@@ -4,128 +4,15 @@
 #include "Thread.h"
 #include "Timer.h"
 #include "Log.h"
-#include "DMRLC.h"
-#include "Sync.h"
-#include "RewriteType.h"
-#include "DMRSlotType.h"
-#include "RewriteSrc.h"
-#include "RewritePC.h"
-#include "RewriteSrcId.h"
-#include "RewriteDstId.h"
-#include "PassAllPC.h"
-#include "PassAllTG.h"
-#include "DMRFullLC.h"
-#include "SimpleIni.h"
 
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <vector>
-#include <fstream>
-#include <iostream>
 
 #if !defined(_WIN32) && !defined(_WIN64)
-#include <sys/types.h>
 #include <unistd.h>
-#include <signal.h>
-#include <fcntl.h>
 #include <pwd.h>
 #endif
-
-#if defined(_WIN32) || defined(_WIN64)
-const char* DEFAULT_INI_FILE = "DMRGateway.ini";
-#else
-const char* DEFAULT_INI_FILE = "/etc/DMRGateway.ini";
-#endif
-
-const unsigned int XLX_SLOT = 2U;
-const unsigned int XLX_TG   = 9U;
-const unsigned char COLOR_CODE = 3U;
-
-unsigned int rdstId = 0;
-unsigned short selnet = 4;
-unsigned int storedtg = 0;
-// Comment out unused variables to suppress warnings; restore if used in original logic
-// static bool net1ok = false;
-// static bool net2ok = false;
-// static bool net3ok = false;
-// static bool net4ok = false;
-// static bool net5ok = false;
-// static bool net6ok = false;
-// static bool rf1ok = false;
-// static bool rf2ok = false;
-// static bool rf3ok = false;
-// static bool rf4ok = false;
-// static bool rf5ok = false;
-// static bool rf6ok = false;
-// static bool ok2tx = false;
-// static int locknet = 4;
-unsigned short int GWMode = 8;
-
-static bool m_killed = false;
-static int m_signal = 0;
-
-#if !defined(_WIN32) && !defined(_WIN64)
-static void sigHandler(int signum)
-{
-    m_killed = true;
-    m_signal = signum;
-}
-#endif
-
-const char* HEADER1 = "This software is licenced under the GPL v2 and is primarily";
-const char* HEADER2 = "intended for amateur and educational use.";
-const char* HEADER3 = "Created by Jonathan Naylor, G4KLX and others";
-const char* HEADER4 = "Modified by Phil Thompson VE3RD";
-
-// Placeholder implementations; replace with original logic if provided
-void ClearRFNets() { /* TODO: Restore original implementation */ }
-void ClearNetworks() { /* TODO: Restore original implementation */ }
-void SetDMR() { /* TODO: Restore original implementation */ }
-int Reload() { return 0; /* TODO: Restore original implementation */ }
-void SetUserMMDVM() { /* TODO: Restore original implementation */ }
-void SetUserRoot() { /* TODO: Restore original implementation */ }
-
-int main(int argc, char** argv)
-{
-    const char* iniFile = DEFAULT_INI_FILE;
-
-    if (argc > 1) {
-        for (int i = 1; i < argc; i++) {
-            std::string arg = argv[i];
-            if (arg == "--version") {
-                ::fprintf(stdout, "DMRGateway version %s\n", VERSION);
-                return 0;
-            } else if (arg[0] != '-') {
-                iniFile = argv[i];
-            }
-        }
-    }
-
-#if !defined(_WIN32) && !defined(_WIN64)
-    ::signal(SIGINT,  sigHandler);
-    ::signal(SIGTERM, sigHandler);
-    ::signal(SIGHUP,  sigHandler);
-#endif
-
-    bool ret = ::LogInitialise(false, ".", "DMRGateway", 2U, 2U, false);
-    if (!ret) {
-        ::fprintf(stderr, "DMRGateway: unable to initialize logging\n");
-        return 1;
-    }
-
-    ::LogInfo(HEADER1);
-    ::LogInfo(HEADER2);
-    ::LogInfo(HEADER3);
-    ::LogInfo(HEADER4);
-    ::LogInfo("Version: %s", VERSION); // Removed GITVERSION due to undeclared error
-
-    CDMRGateway gateway(iniFile);
-    int status = gateway.run();
-
-    ::LogFinalise();
-    return status;
-}
 
 CDMRGateway::CDMRGateway(const std::string& confFile) :
 m_conf(confFile),
@@ -145,7 +32,7 @@ m_xlxTG(0U),
 m_xlxBase(0U),
 m_xlxStartup(0U),
 m_xlxConnected(false),
-m_xlxRelink(1000U, 60U),
+m_xlxRelink(1000U, 60U), // 60 seconds relink timer
 m_xlxUserControl(false),
 m_xlxRewrite(NULL),
 m_xlxVoice(NULL),
@@ -205,7 +92,7 @@ int CDMRGateway::run()
 
     ret = ::LogInitialise(m_conf.getDaemon(), m_conf.getLogFilePath(), m_conf.getLogFileRoot(), m_conf.getLogFileLevel(), m_conf.getLogDisplayLevel(), m_conf.getLogFileRotate());
     if (!ret) {
-        ::LogError("Unable to initialize the logging");
+        ::LogError("Unable to initialise the logging");
         return 1;
     }
 
@@ -408,7 +295,7 @@ int CDMRGateway::run()
 
     LogMessage("DMRGateway-%s is running", VERSION);
 
-    while (!m_killed) {
+    while (true) {
         if (m_xlxNetwork) {
             bool connected = m_xlxNetwork->isConnected();
             if (connected && !m_xlxConnected) {
@@ -539,7 +426,7 @@ int CDMRGateway::run()
                 }
             }
 
-            if (m_xlxVoice != NULL && m_conf.getVoiceEnabled() && network > 0U && network <= 5U) {
+            if (m_xlxVoice != NULL && network > 0U && network <= 5U) {
                 std::string networkName;
                 switch (network) {
                     case 1U: networkName = m_conf.getDMRNetwork1Name(); break;
@@ -549,9 +436,9 @@ int CDMRGateway::run()
                     case 5U: networkName = m_conf.getDMRNetwork5Name(); break;
                     default: break;
                 }
-                m_xlxVoice->announce(mode, networkName, tg);
-            } else if (m_xlxVoice != NULL && m_conf.getVoiceEnabled() && network == 0U && dstId == 9007U) {
-                m_xlxVoice->announce(mode, "XLX", tg);
+                announce(mode, networkName, tg);
+            } else if (m_xlxVoice != NULL && network == 0U && dstId == 9007U) {
+                announce(mode, "XLX", tg);
             }
 
             if (flco == FLCO_GROUP && slotNo == m_xlxSlot && dstId == m_xlxTG) {
@@ -579,7 +466,7 @@ int CDMRGateway::run()
                             writeXLXLink(srcId, 4000U, m_xlxNetwork);
                         writeXLXLink(srcId, dstId, m_xlxNetwork);
                         m_xlxReflector = dstId;
-                        char c = ('A' + (m_xlxReflector % 100U)) - 1U;
+                        char c = ('A' + (dstId % 100U)) - 1U;
                         LogMessage("XLX, Linking to reflector XLX%u %c", m_xlxNumber, c);
                     }
 
@@ -782,7 +669,7 @@ int CDMRGateway::run()
                 unsigned int dstId = data.getDstId();
 
                 if (m_status[slotNo] == DMRGWS_NONE || m_status[slotNo] == DMRGWS_XLXREFLECTOR) {
-                    m_xlxRewrite->process(data, true);
+                    m_xlxRewrite->process worms, data, true);
                     m_repeater->write(data);
                     timer[slotNo]->setTimeout(netTimeout);
                     timer[slotNo]->start();
@@ -827,44 +714,6 @@ int CDMRGateway::run()
             m_xlxVoice->clock(ms);
 
         CThread::sleep(10U);
-    }
-
-    ::LogInfo("DMRGateway is exiting on receipt of signal %d", m_signal);
-
-    if (m_dmrNetwork1) {
-        m_dmrNetwork1->close(true);
-        delete m_dmrNetwork1;
-        m_dmrNetwork1 = NULL;
-    }
-    if (m_dmrNetwork2) {
-        m_dmrNetwork2->close(true);
-        delete m_dmrNetwork2;
-        m_dmrNetwork2 = NULL;
-    }
-    if (m_dmrNetwork3) {
-        m_dmrNetwork3->close(true);
-        delete m_dmrNetwork3;
-        m_dmrNetwork3 = NULL;
-    }
-    if (m_dmrNetwork4) {
-        m_dmrNetwork4->close(true);
-        delete m_dmrNetwork4;
-        m_dmrNetwork4 = NULL;
-    }
-    if (m_dmrNetwork5) {
-        m_dmrNetwork5->close(true);
-        delete m_dmrNetwork5;
-        m_dmrNetwork5 = NULL;
-    }
-    if (m_xlxNetwork) {
-        m_xlxNetwork->close(true);
-        delete m_xlxNetwork;
-        m_xlxNetwork = NULL;
-    }
-    if (m_repeater) {
-        m_repeater->close();
-        delete m_repeater;
-        m_repeater = NULL;
     }
 
     return 0;
@@ -925,36 +774,189 @@ void CDMRGateway::writeXLXLink(unsigned int sourceId, unsigned int destId, CDMRN
     network->write(data);
 }
 
-void CDMRGateway::buildNetworkStatusString(std::string& replyStr)
+void CDMRGateway::announce(const std::string& mode, const std::string& network, unsigned int tg)
 {
-    replyStr.clear();
-    if (m_dmrNetwork1) {
-        replyStr += "DMR Network 1: " + std::string(m_dmrNetwork1->isConnected() ? "Connected" : "Disconnected") + "\n";
+    if (!m_conf.getVoiceEnabled())
+        return;
+
+    std::string modeFile;
+    if (mode == "Raw")
+        modeFile = "raw";
+    else if (mode == "Seven Digit")
+        modeFile = "seven_digit";
+    else if (mode == "Eight Digit")
+        modeFile = "eight_digit";
+    else {
+        LogWarning("Unknown mode: %s", mode.c_str());
+        return;
     }
-    if (m_dmrNetwork2) {
-        replyStr += "DMR Network 2: " + std::string(m_dmrNetwork2->isConnected() ? "Connected" : "Disconnected") + "\n";
-    }
-    if (m_dmrNetwork3) {
-        replyStr += "DMR Network 3: " + std::string(m_dmrNetwork3->isConnected() ? "Connected" : "Disconnected") + "\n";
-    }
-    if (m_dmrNetwork4) {
-        replyStr += "DMR Network 4: " + std::string(m_dmrNetwork4->isConnected() ? "Connected" : "Disconnected") + "\n";
-    }
-    if (m_dmrNetwork5) {
-        replyStr += "DMR Network 5: " + std::string(m_dmrNetwork5->isConnected() ? "Connected" : "Disconnected") + "\n";
-    }
-    if (m_xlxNetwork) {
-        replyStr += "XLX Network: ";
-        if (m_xlxConnected) {
-            if (m_xlxReflector >= 4001U && m_xlxReflector <= 4026U) {
-                char c = ('A' + (m_xlxReflector % 100U)) - 1U;
-                replyStr += "Connected to XLX" + std::to_string(m_xlxNumber) + " " + c;
-            } else {
-                replyStr += "Connected to XLX" + std::to_string(m_xlxNumber);
-            }
-        } else {
-            replyStr += "Disconnected";
+
+    std::string networkFile;
+    if (network == "XLX")
+        networkFile = "xlx";
+    else if (network.find("DMR Network ") == 0 && network.length() > 11) {
+        char networkNum = network[11];
+        if (networkNum >= '1' && networkNum <= '5')
+            networkFile = "dmr_network_" + std::string(1, networkNum);
+        else {
+            LogWarning("Invalid network: %s", network.c_str());
+            return;
         }
-        replyStr += "\n";
+    } else {
+        LogWarning("Invalid network: %s", network.c_str());
+        return;
     }
+
+    std::vector<std::string> filenames;
+    filenames.push_back(modeFile);
+    filenames.push_back(networkFile);
+    filenames.push_back(std::to_string(tg));
+
+    unsigned int wavLength = 0U;
+    std::vector<unsigned char> tempWavData;
+
+    std::string directory = m_conf.getVoiceDirectory();
+    std::string language = m_conf.getVoiceLanguage();
+
+    for (const auto& fname : filenames) {
+        char filename[100U];
+        ::sprintf(filename, "%s/%s_%s.wav", directory.c_str(), language.c_str(), fname.c_str());
+
+        FILE* fp = ::fopen(filename, "rb");
+        if (fp == NULL) {
+            LogWarning("Cannot open %s", filename);
+            continue;
+        }
+
+        unsigned char buffer[320U];
+        ::fseek(fp, 44, SEEK_SET);
+
+        unsigned int length = 0U;
+        while (::fread(buffer, 1U, 320U, fp) == 320U)
+            length++;
+
+        ::fclose(fp);
+
+        fp = ::fopen(filename, "rb");
+        if (fp == NULL) {
+            LogWarning("Cannot open %s", filename);
+            continue;
+        }
+
+        ::fseek(fp, 44, SEEK_SET);
+
+        for (unsigned int i = 0U; i < length; i++) {
+            if (::fread(buffer, 1U, 320U, fp) != 320U) {
+                LogWarning("Cannot read %s", filename);
+                ::fclose(fp);
+                continue;
+            }
+            for (unsigned int j = 0U; j < 320U; j++)
+                tempWavData.push_back(buffer[j]);
+            wavLength++;
+        }
+
+        ::fclose(fp);
+    }
+
+    if (wavLength == 0U) {
+        LogWarning("No voice data loaded for announcement");
+        return;
+    }
+
+    unsigned char* wavData = new unsigned char[wavLength * 320U];
+    ::memset(wavData, 0x00U, wavLength * 320U);
+
+    for (unsigned int i = 0U; i < wavLength; i++) {
+        unsigned char* p = wavData + (i * 320U);
+        for (unsigned int j = 0U; j < 320U; j++)
+            p[j] = tempWavData[i * 320U + j];
+    }
+
+    CDMRData data;
+    CDMREmbeddedData embedded;
+    unsigned int pos = 0U;
+    unsigned int seqNo = 0U;
+    bool sent = false;
+    CTimer timer(1000U, 0U, 500U);
+
+    data.setFLCO(FLCO_USER_USER);
+    data.setSlotNo(m_xlxSlot);
+    data.setSrcId(m_conf.getDMRNetwork1Id());
+    data.setDstId(tg);
+
+    embedded.setLC(*data.getLC());
+    embedded.setSrcId(m_conf.getDMRNetwork1Id());
+    embedded.setDstId(tg);
+
+    timer.start();
+
+    while (pos <= wavLength) {
+        if (timer.isRunning() && timer.hasExpired()) {
+            unsigned char buffer[DMR_FRAME_LENGTH_BYTES];
+
+            if (!sent) {
+                data.setDataType(DT_VOICE_LC_HEADER);
+                data.setSeqNo(seqNo);
+                data.getData(buffer);
+                unsigned char lc[9U];
+                embedded.getData(lc);
+                for (unsigned int i = 0U; i < 9U; i++)
+                    buffer[i + 12U] = lc[i];
+                m_repeater->write(data);
+                seqNo++;
+
+                for (unsigned int i = 0U; i < 5U; i++) {
+                    data.setDataType(DT_VOICE);
+                    data.setSeqNo(seqNo);
+                    data.getData(buffer);
+                    m_repeater->write(data);
+                    seqNo++;
+                }
+                sent = true;
+            } else {
+                if (pos >= wavLength) {
+                    data.setDataType(DT_TERMINATOR_WITH_LC);
+                    data.setSeqNo(seqNo);
+                    data.getData(buffer);
+                    unsigned char lc[9U];
+                    embedded.getData(lc);
+                    for (unsigned int i = 0U; i < 9U; i++)
+                        buffer[i + 12U] = lc[i];
+                    m_repeater->write(data);
+                    seqNo = 0U;
+                    break;
+                } else {
+                    if ((pos % 6U) == 0U) {
+                        unsigned char lc[7U];
+                        embedded.getData(lc);
+                        data.setDataType(DT_VOICE_SYNC);
+                        data.setSeqNo(seqNo);
+                        data.getData(buffer);
+                        for (unsigned int i = 0U; i < 7U; i++)
+                            buffer[i + 13U] = lc[i];
+                    } else {
+                        data.setDataType(DT_VOICE);
+                        data.setSeqNo(seqNo);
+                        data.getData(buffer);
+                    }
+
+                    unsigned char* p = wavData + (pos * 320U);
+                    for (unsigned int i = 0U; i < 3U; i++) {
+                        ::memcpy(buffer + 6U + (i * 7U), p, 7U);
+                        p += 320U / 3U;
+                    }
+                    m_repeater->write(data);
+                    pos++;
+                    seqNo++;
+                }
+            }
+
+            timer.start();
+        }
+
+        CThread::sleep(10U);
+    }
+
+    delete[] wavData;
 }
