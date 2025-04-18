@@ -480,7 +480,7 @@ case $CHOICE in
             ;;
          2)   echo "You Chose to Install DMRGateway - Basic Mode"
 		sudo cp /home/pi-star/DMRGateway-6/DMRGateway.ini /etc/dmrgateway
-		CopyBin.sh
+		CopyBin
 		GetSetInfo
 		SetNetworks
 		GWMode1

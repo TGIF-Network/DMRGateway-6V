@@ -498,6 +498,13 @@ int CDMRGateway::run()
         CDMRData data;
 
         bool ret = m_repeater->read(data);
+if (ret) {
+    unsigned int slotNo = data.getSlotNo();
+    LogDebug("RF DMR: slot=%u, src=%u, dst=%u, flco=%d, status=%d", slotNo, data.getSrcId(), data.getDstId(), data.getFLCO(), m_status[slotNo]);
+} else {
+    LogDebug("No RF data received");
+}
+
         if (ret) {
             unsigned int slotNo = data.getSlotNo();
             unsigned int srcId = data.getSrcId();
